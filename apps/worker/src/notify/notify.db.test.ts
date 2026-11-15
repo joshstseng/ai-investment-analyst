@@ -6,7 +6,7 @@ import {
   createDb,
   exitRules,
   instruments,
-  loadDatabaseUrl,
+  testDatabaseUrl,
   type Db,
 } from '@aia/db';
 import { asc, eq, sql } from 'drizzle-orm';
@@ -16,13 +16,7 @@ import type { Mailer } from './mailer';
 import { enqueueAlert, MAX_ATTEMPTS, sendPending } from './outbox';
 import { processRuleAlerts } from './rule-alerts';
 
-const url = (() => {
-  try {
-    return loadDatabaseUrl();
-  } catch {
-    return undefined;
-  }
-})();
+const url = testDatabaseUrl();
 
 class Rollback extends Error {}
 
@@ -150,6 +144,52 @@ describe.skipIf(!url)('alerts (Postgres)', () => {
       for (let i = 0; i < MAX_ATTEMPTS + 2; i++) await sendPending(tx, broken);
       const [k2] = await tx.select().from(alerts).where(eq(alerts.dedupeKey, 'k2'));
       expect(k2!.attempts).toBe(MAX_ATTEMPTS);
+    });
+  });
+
+  it('stops at the first failure (rest stay queued) and never runs two passes at once', async () => {
+    await inTx(async (tx) => {
+      const a = {
+        kind: 'test' as const,
+        severity: 'info' as const,
+        channel: 'email' as const,
+        subject: 'S',
+        body: 'B',
+      };
+      for (const k of ['q1', 'q2', 'q3']) await enqueueAlert(tx, { ...a, dedupeKey: k });
+
+      const broken: Mailer = {
+        from: 'a@b.co',
+        to: ['a@b.co'],
+        send: vi.fn(async () => Promise.reject(new Error('timeout'))),
+      };
+      expect(await sendPending(tx, broken)).toMatchObject({ pending: 3, failed: 1, deferred: 2 });
+      expect(broken.send).toHaveBeenCalledTimes(1);
+      const attempts = (await tx.select().from(alerts).orderBy(asc(alerts.id))).map(
+        (r) => r.attempts,
+      );
+      expect(attempts).toEqual([1, 0, 0]);
+
+      // A pass that starts while another is still sending is skipped (no double sends).
+      let release!: () => void;
+      const slow: Mailer = {
+        from: 'a@b.co',
+        to: ['a@b.co'],
+        send: vi.fn(
+          () => new Promise<{ messageId: string }>((r) => (release = () => r({ messageId: 'x' }))),
+        ),
+      };
+      const first = sendPending(tx, slow);
+      await vi.waitFor(() => expect(slow.send).toHaveBeenCalled());
+      expect(await sendPending(tx, slow)).toMatchObject({ skipped: true });
+      release();
+      // Let the remaining sends complete.
+      const finishing = first;
+      await vi.waitFor(() => expect(slow.send).toHaveBeenCalledTimes(2));
+      release();
+      await vi.waitFor(() => expect(slow.send).toHaveBeenCalledTimes(3));
+      release();
+      expect(await finishing).toMatchObject({ sent: 3, skipped: false });
     });
   });
 });

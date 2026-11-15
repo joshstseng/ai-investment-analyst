@@ -30,7 +30,7 @@ import { NewsStreamManager } from './news/run-stream';
 import { runFeedHealth } from './health/run';
 import { gatherDigest, renderDigest } from './notify/digest';
 import { alerts } from '@aia/db';
-import { digestJob, outboxJob } from './schedule/jobs';
+import { digestJob, drainOutbox, outboxJob } from './schedule/jobs';
 import { latestCompletedSession } from './rules/check';
 import { closeCheckJob } from './schedule/jobs';
 import { scheduleDefinitions, TIMEZONE } from './schedule/scheduler';
@@ -179,6 +179,7 @@ try {
   console.error(String(error));
   process.exitCode = 1;
 } finally {
+  await drainOutbox();
   await ctx.close();
 }
 

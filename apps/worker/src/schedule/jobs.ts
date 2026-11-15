@@ -83,7 +83,7 @@ export async function closeCheckJob(ctx: Context, now = new Date()) {
       },
     };
   });
-  await outboxJob(ctx);
+  kickOutbox(ctx);
   return `checked ${due}`;
 }
 
@@ -105,7 +105,7 @@ export async function barsRefreshJob(ctx: Context, now = new Date()) {
 
 export async function feedHealthJob(ctx: Context) {
   await runJob(ctx.db, 'feed_health', () => runFeedHealth(ctx, { alert: true }));
-  await outboxJob(ctx);
+  kickOutbox(ctx);
 }
 
 /** Sends queued alerts; failures stay queued and are retried (max 5 attempts, 24 h). */
@@ -113,6 +113,23 @@ export async function outboxJob(ctx: Context) {
   const res = await sendPending(ctx.db, ctx.mailer);
   if (res.pending) log.info('outbox', res);
   return res;
+}
+
+/**
+ * Starts a send pass without waiting for it. Jobs that queue alerts call this so a slow or
+ * unreachable mail server never delays price checks, the schedule, or other jobs.
+ */
+let inflight: Promise<unknown> = Promise.resolve();
+
+export function kickOutbox(ctx: Context) {
+  inflight = outboxJob(ctx).catch((error: unknown) =>
+    log.warn('outbox pass failed', { error: String(error) }),
+  );
+}
+
+/** Waits for a background send pass to finish (CLI commands call this before exiting). */
+export function drainOutbox(): Promise<unknown> {
+  return inflight;
 }
 
 export async function lastDigestDate(ctx: Context): Promise<string | null> {
@@ -144,6 +161,6 @@ export async function digestJob(ctx: Context, now = new Date()) {
     });
     return { items: id ? 1 : 0, meta: { date: due, subject: msg.subject } };
   });
-  await outboxJob(ctx);
+  kickOutbox(ctx);
   return `digest ${due}`;
 }

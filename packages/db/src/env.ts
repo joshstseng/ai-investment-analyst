@@ -12,3 +12,25 @@ export function loadDatabaseUrl(): string {
   const raw = process.env.DATABASE_URL?.trim().replace(/^(["'])(.*)\1$/, '$2');
   return z.string({ error: 'DATABASE_URL is not set' }).url().parse(raw);
 }
+
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]', 'host.docker.internal']);
+
+/**
+ * DATABASE_URL for integration tests, or undefined (tests skip) unless it points at a local
+ * database. The DB tests truncate tables inside rolled-back transactions; they must never run
+ * against Railway or any other real database, whatever .env says.
+ */
+export function testDatabaseUrl(): string | undefined {
+  let url: string;
+  try {
+    url = loadDatabaseUrl();
+  } catch {
+    return undefined;
+  }
+  const host = new URL(url).hostname;
+  if (!LOCAL_HOSTS.has(host)) {
+    console.warn(`[db tests] skipped: DATABASE_URL host "${host}" is not a local database`);
+    return undefined;
+  }
+  return url;
+}

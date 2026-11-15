@@ -4,7 +4,7 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import { createDb, type Tx } from '../client';
-import { loadDatabaseUrl } from '../env';
+import { testDatabaseUrl } from '../env';
 import { exitRules, holdings } from '../schema';
 import { applySeedPlan } from './apply';
 import { HOLDINGS_MD, OVERRIDES, POSITIONS_CSV, WATCHLIST_CSV } from './fixtures';
@@ -16,13 +16,7 @@ import { verifyAgainstHoldingsMd } from './verify';
 import { parseWatchlistCsv } from './watchlist-csv';
 import { eq, sql } from 'drizzle-orm';
 
-const url = (() => {
-  try {
-    return loadDatabaseUrl();
-  } catch {
-    return undefined;
-  }
-})();
+const url = testDatabaseUrl();
 
 class Rollback extends Error {}
 

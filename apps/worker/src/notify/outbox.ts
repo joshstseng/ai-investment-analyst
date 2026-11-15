@@ -45,47 +45,73 @@ export async function enqueueAlert(db: Db, a: NewAlert): Promise<number | null> 
   return row?.id ?? null;
 }
 
-/** Sends every unsent alert (oldest first) that is under the attempt limit and recent. */
+/** True while a send pass is running in this process (two passes could send an alert twice). */
+let sending = false;
+
+/**
+ * Sends unsent alerts, oldest first (under the attempt limit, created in the last 24 h).
+ * Stops at the first failure: if the mail server is down, the rest would fail the same way, so
+ * they stay queued for the next pass instead of each burning the full retry time.
+ * Returns skipped=true if another pass is already running in this process.
+ */
 export async function sendPending(db: Db, mailer: Mailer | null, now = new Date()) {
-  const pending = await db
-    .select()
-    .from(alerts)
-    .where(
-      and(
-        isNull(alerts.sentAt),
-        lt(alerts.attempts, MAX_ATTEMPTS),
-        gte(alerts.createdAt, new Date(now.getTime() - RETRY_WINDOW_MS)),
-      ),
-    )
-    .orderBy(asc(alerts.id));
-  let sent = 0;
-  let failed = 0;
-  for (const a of pending) {
-    if (!mailer) {
-      await db
-        .update(alerts)
-        .set({ error: 'email not configured (GMAIL_USER / GMAIL_APP_PASSWORD / ALERT_EMAIL_TO)' })
-        .where(eq(alerts.id, a.id));
-      failed++;
-      continue;
+  if (sending) return { pending: 0, sent: 0, failed: 0, deferred: 0, skipped: true };
+  sending = true;
+  try {
+    const pending = await db
+      .select()
+      .from(alerts)
+      .where(
+        and(
+          isNull(alerts.sentAt),
+          lt(alerts.attempts, MAX_ATTEMPTS),
+          gte(alerts.createdAt, new Date(now.getTime() - RETRY_WINDOW_MS)),
+        ),
+      )
+      .orderBy(asc(alerts.id));
+    let sent = 0;
+    let failed = 0;
+    for (const a of pending) {
+      if (!mailer) {
+        await db
+          .update(alerts)
+          .set({ error: 'email not configured (GMAIL_USER / GMAIL_APP_PASSWORD / ALERT_EMAIL_TO)' })
+          .where(eq(alerts.id, a.id));
+        failed++;
+        continue;
+      }
+      try {
+        await mailer.send({ subject: a.subject, text: a.body, html: a.html ?? undefined });
+        await db
+          .update(alerts)
+          .set({ sentAt: new Date(), attempts: a.attempts + 1, error: null })
+          .where(eq(alerts.id, a.id));
+        sent++;
+        log.info('alert sent', { id: a.id, subject: a.subject });
+      } catch (error) {
+        // mailer errors are already redacted
+        await db
+          .update(alerts)
+          .set({ attempts: a.attempts + 1, error: String(error).slice(0, 500) })
+          .where(eq(alerts.id, a.id));
+        failed++;
+        log.warn('alert send failed; leaving the rest queued for the next pass', {
+          id: a.id,
+          attempt: a.attempts + 1,
+          stillQueued: pending.length - sent - failed,
+          error: String(error),
+        });
+        break;
+      }
     }
-    try {
-      await mailer.send({ subject: a.subject, text: a.body, html: a.html ?? undefined });
-      await db
-        .update(alerts)
-        .set({ sentAt: new Date(), attempts: a.attempts + 1, error: null })
-        .where(eq(alerts.id, a.id));
-      sent++;
-      log.info('alert sent', { id: a.id, subject: a.subject });
-    } catch (error) {
-      // mailer errors are already redacted
-      await db
-        .update(alerts)
-        .set({ attempts: a.attempts + 1, error: String(error).slice(0, 500) })
-        .where(eq(alerts.id, a.id));
-      failed++;
-      log.warn('alert send failed', { id: a.id, attempt: a.attempts + 1, error: String(error) });
-    }
+    return {
+      pending: pending.length,
+      sent,
+      failed,
+      deferred: pending.length - sent - failed,
+      skipped: false,
+    };
+  } finally {
+    sending = false;
   }
-  return { pending: pending.length, sent, failed };
 }

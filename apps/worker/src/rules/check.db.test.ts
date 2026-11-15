@@ -3,7 +3,7 @@ import {
   createDb,
   exitRules,
   instruments,
-  loadDatabaseUrl,
+  testDatabaseUrl,
   marketCalendar,
   pricesDaily,
   ruleEvaluations,
@@ -14,13 +14,7 @@ import { eq, sql } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 import { checkRules, latestCompletedSession } from './check';
 
-const url = (() => {
-  try {
-    return loadDatabaseUrl();
-  } catch {
-    return undefined;
-  }
-})();
+const url = testDatabaseUrl();
 
 class Rollback extends Error {}
 

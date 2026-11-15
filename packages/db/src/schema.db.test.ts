@@ -5,16 +5,10 @@
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createDb, type Db } from './client';
-import { loadDatabaseUrl } from './env';
+import { testDatabaseUrl } from './env';
 import { accounts, exitRules, holdings, instruments } from './schema';
 
-const url = (() => {
-  try {
-    return loadDatabaseUrl();
-  } catch {
-    return undefined;
-  }
-})();
+const url = testDatabaseUrl();
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 

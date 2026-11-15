@@ -1,17 +1,11 @@
 /** Storage behaviour against Postgres, inside rolled-back transactions. */
-import { createDb, loadDatabaseUrl, newsItems, symbolDataStatus, type Db } from '@aia/db';
+import { createDb, testDatabaseUrl, newsItems, symbolDataStatus, type Db } from '@aia/db';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 import { setDataStatus } from './market/data-status';
 import { insertNews, toNewsRow } from './news/store';
 
-const url = (() => {
-  try {
-    return loadDatabaseUrl();
-  } catch {
-    return undefined;
-  }
-})();
+const url = testDatabaseUrl();
 
 class Rollback extends Error {}
 
