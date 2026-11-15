@@ -2,7 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FeedAssessment } from '../health/assess';
 import { digestDue, renderDigest, type DigestData } from './digest';
 import { composeHealthAlert, feedTransitions } from './health-alerts';
-import { createGmailMailer, isTransientSmtpError, redact, SEND_RETRY_DELAYS_MS } from './mailer';
+import {
+  createGmailMailer,
+  createMailer,
+  createResendMailer,
+  isTransientSmtpError,
+  redact,
+  SEND_RETRY_DELAYS_MS,
+} from './mailer';
 import { composeRuleAlert, type RuleAlertInput } from './rule-alerts';
 
 const PASSWORD = 'abcdefghijklmnop';
@@ -350,5 +357,85 @@ describe('daily digest', () => {
     expect(m.text).toContain('WEEKLY: RULES TO WRITE');
     expect(m.text).toContain('- AAAX: risk stop, take profit');
     expect(m.text).toContain('- BKX (Roth IRA): confirm the fill');
+  });
+});
+
+describe('Resend (HTTPS) mailer', () => {
+  const KEY = 're_test_secret_key_123';
+  const env = {
+    RESEND_API_KEY: KEY,
+    RESEND_FROM: 'AI Investment Analyst <onboarding@resend.dev>',
+    ALERT_EMAIL_TO: ['me@example.com'],
+  };
+  const reply = (status: number, body: unknown) =>
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  const noWait = async () => {};
+
+  it('posts the email with auth and an idempotency key, and returns the id', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => reply(200, { id: 'em_123' }));
+    const mailer = createResendMailer(env, { fetchImpl, wait: noWait })!;
+    await expect(
+      mailer.send({
+        subject: '[AIA] TEST',
+        text: 't',
+        html: '<p>t</p>',
+        idempotencyKey: 'aia-rule:1:2026-11-13',
+      }),
+    ).resolves.toEqual({ messageId: 'em_123' });
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(url).toBe('https://api.resend.com/emails');
+    expect(init!.method).toBe('POST');
+    const headers = init!.headers as Record<string, string>;
+    expect(headers.Authorization).toBe(`Bearer ${KEY}`);
+    expect(headers['Idempotency-Key']).toBe('aia-rule:1:2026-11-13');
+    expect(JSON.parse(init!.body as string)).toEqual({
+      from: env.RESEND_FROM,
+      to: ['me@example.com'],
+      subject: '[AIA] TEST',
+      text: 't',
+      html: '<p>t</p>',
+    });
+  });
+
+  it('retries rate limits and server errors, then succeeds', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(reply(429, { message: 'Too many requests' }))
+      .mockResolvedValueOnce(reply(503, { message: 'unavailable' }))
+      .mockResolvedValueOnce(reply(200, { id: 'em_2' }));
+    const mailer = createResendMailer(env, { fetchImpl, wait: noWait })!;
+    await expect(mailer.send({ subject: 's', text: 't' })).resolves.toEqual({ messageId: 'em_2' });
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it('fails fast on a rejected request (e.g. sending to an unverified address) without leaking the key', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      reply(403, {
+        statusCode: 403,
+        name: 'validation_error',
+        message: `You can only send testing emails to your own email address. key=${KEY}`,
+      }),
+    );
+    const mailer = createResendMailer(env, { fetchImpl, wait: noWait })!;
+    const err = await failure(mailer.send({ subject: 's', text: 't' }));
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(err.message).toContain('HTTP 403');
+    expect(err.message).toContain('only send testing emails to your own email address');
+    expect(err.message).not.toContain(KEY);
+  });
+
+  it('is chosen over Gmail when RESEND_API_KEY is set', () => {
+    expect(createMailer({ ...ENV, ...env })!.provider).toBe('resend');
+    expect(
+      createMailer({ ...ENV, RESEND_API_KEY: undefined, RESEND_FROM: env.RESEND_FROM })!.provider,
+    ).toBe('gmail');
+    expect(
+      createMailer({
+        ...ENV,
+        GMAIL_USER: undefined,
+        RESEND_API_KEY: undefined,
+        RESEND_FROM: env.RESEND_FROM,
+      }),
+    ).toBeNull();
   });
 });

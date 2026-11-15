@@ -109,6 +109,7 @@ describe.skipIf(!url)('alerts (Postgres)', () => {
     await inTx(async (tx) => {
       const sent: string[] = [];
       const ok: Mailer = {
+        provider: 'test',
         from: 'a@b.co',
         to: ['a@b.co'],
         send: vi.fn(async (m) => {
@@ -159,6 +160,7 @@ describe.skipIf(!url)('alerts (Postgres)', () => {
       for (const k of ['q1', 'q2', 'q3']) await enqueueAlert(tx, { ...a, dedupeKey: k });
 
       const broken: Mailer = {
+        provider: 'test',
         from: 'a@b.co',
         to: ['a@b.co'],
         send: vi.fn(async () => Promise.reject(new Error('timeout'))),
@@ -173,6 +175,7 @@ describe.skipIf(!url)('alerts (Postgres)', () => {
       // A pass that starts while another is still sending is skipped (no double sends).
       let release!: () => void;
       const slow: Mailer = {
+        provider: 'test',
         from: 'a@b.co',
         to: ['a@b.co'],
         send: vi.fn(

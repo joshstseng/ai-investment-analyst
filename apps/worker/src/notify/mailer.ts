@@ -1,17 +1,26 @@
 /**
- * Email transport: Gmail over SMTPS (smtp.gmail.com:465) with an app password via nodemailer.
- * The password is never logged: every error text that leaves this module is redacted.
+ * Email transports:
+ * - Resend over HTTPS (used when RESEND_API_KEY is set; required on Railway, whose Hobby plan
+ *   blocks outbound SMTP ports)
+ * - Gmail over SMTPS (smtp.gmail.com:465) with an app password via nodemailer (local fallback)
+ * Credentials are never logged: every error text that leaves this module is redacted.
  */
 import nodemailer from 'nodemailer';
+import { z } from 'zod';
+import { HttpError, requestJson } from '../lib/http';
 import type { Env } from '../env';
 
 export interface EmailMessage {
   subject: string;
   text: string;
   html?: string;
+  /** Same key on every retry of one alert, so a provider that supports it never sends twice. */
+  idempotencyKey?: string;
 }
 
 export interface Mailer {
+  /** 'resend' or 'gmail', for logs. */
+  readonly provider: string;
   readonly from: string;
   readonly to: readonly string[];
   send(msg: EmailMessage): Promise<{ messageId: string }>;
@@ -90,6 +99,7 @@ export function createGmailMailer(
   };
 
   return {
+    provider: 'gmail',
     from: user,
     to,
     async send(msg) {
@@ -120,4 +130,68 @@ export function createGmailMailer(
       }
     },
   };
+}
+
+const resendResponse = z.object({ id: z.string() });
+
+/** Resend over HTTPS. Retries (inside requestJson) cover timeouts, 429 and 5xx; 4xx fail fast. */
+export function createResendMailer(
+  env: Pick<Env, 'RESEND_API_KEY' | 'RESEND_FROM' | 'ALERT_EMAIL_TO'>,
+  opts: {
+    fetchImpl?: typeof fetch;
+    wait?: (ms: number) => Promise<void>;
+    onRetry?: (info: { attempt: number; delayMs: number; error: string }) => void;
+  } = {},
+): Mailer | null {
+  const key = env.RESEND_API_KEY;
+  const to = env.ALERT_EMAIL_TO;
+  if (!key || to.length === 0) return null;
+  return {
+    provider: 'resend',
+    from: env.RESEND_FROM,
+    to,
+    async send(msg) {
+      try {
+        const res = await requestJson('https://api.resend.com/emails', {
+          method: 'POST',
+          schema: resendResponse,
+          headers: {
+            Authorization: `Bearer ${key}`,
+            ...(msg.idempotencyKey ? { 'Idempotency-Key': msg.idempotencyKey.slice(0, 256) } : {}),
+          },
+          body: {
+            from: env.RESEND_FROM,
+            to: [...to],
+            subject: msg.subject,
+            text: msg.text,
+            html: msg.html,
+          },
+          timeoutMs: 30_000,
+          retries: SEND_RETRY_DELAYS_MS.length,
+          baseDelayMs: SEND_RETRY_DELAYS_MS[0],
+          maxDelayMs: SEND_RETRY_DELAYS_MS[1],
+          fetchImpl: opts.fetchImpl,
+          wait: opts.wait,
+          onRetry: ({ attempt, delayMs, error }) =>
+            opts.onRetry?.({ attempt: attempt + 1, delayMs, error: redact(String(error), key) }),
+        });
+        return { messageId: res.id };
+      } catch (error) {
+        const status = error instanceof HttpError ? ` (HTTP ${error.status})` : '';
+        // eslint-disable-next-line preserve-caught-error
+        throw new Error(redact(`email send failed via Resend${status}: ${String(error)}`, key));
+      }
+    },
+  };
+}
+
+/** Resend when RESEND_API_KEY is set, otherwise Gmail SMTP; null if neither is configured. */
+export function createMailer(
+  env: Pick<
+    Env,
+    'RESEND_API_KEY' | 'RESEND_FROM' | 'GMAIL_USER' | 'GMAIL_APP_PASSWORD' | 'ALERT_EMAIL_TO'
+  >,
+  opts: { onRetry?: (info: { attempt: number; delayMs: number; error: string }) => void } = {},
+): Mailer | null {
+  return createResendMailer(env, opts) ?? createGmailMailer(env, opts);
 }

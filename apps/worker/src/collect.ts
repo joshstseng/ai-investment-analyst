@@ -124,14 +124,16 @@ try {
     case 'test-email': {
       if (!ctx.mailer) {
         throw new Error(
-          'email not configured: set GMAIL_USER, GMAIL_APP_PASSWORD and ALERT_EMAIL_TO',
+          'email not configured: set RESEND_API_KEY (or GMAIL_USER + GMAIL_APP_PASSWORD) and ALERT_EMAIL_TO',
         );
       }
       const res = await ctx.mailer.send({
         subject: '[AIA] HEALTH Test email',
-        text: `This is a test from the AI Investment Analyst worker.\n\nFrom: ${ctx.mailer.from}\nTo: ${ctx.mailer.to.join(', ')}\nSent: ${new Date().toISOString()}`,
+        text: `This is a test from the AI Investment Analyst worker.\n\nProvider: ${ctx.mailer.provider}\nFrom: ${ctx.mailer.from}\nTo: ${ctx.mailer.to.join(', ')}\nSent: ${new Date().toISOString()}`,
       });
-      console.log(`sent test email to ${ctx.mailer.to.join(', ')} (message id ${res.messageId})`);
+      console.log(
+        `sent test email via ${ctx.mailer.provider} to ${ctx.mailer.to.join(', ')} (message id ${res.messageId})`,
+      );
       break;
     }
     case 'digest': {

@@ -19,7 +19,18 @@ const schema = z.object({
     .regex(/\S+@\S+\.\S+/, 'must include a contact email')
     .optional()
     .or(z.literal('').transform(() => undefined)),
-  /** Gmail account that sends alerts (smtp.gmail.com). */
+  /**
+   * Resend API key. When set, email goes out over Resend's HTTPS API (works on Railway, which
+   * blocks outbound SMTP on the Hobby plan); otherwise Gmail SMTP below is used.
+   */
+  RESEND_API_KEY: z
+    .string()
+    .min(1)
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  /** Sender for Resend. Without a verified domain, only onboarding@resend.dev works. */
+  RESEND_FROM: z.string().min(3).default('AI Investment Analyst <onboarding@resend.dev>'),
+  /** Gmail account that sends alerts (smtp.gmail.com), used when RESEND_API_KEY is not set. */
   GMAIL_USER: z
     .email()
     .optional()

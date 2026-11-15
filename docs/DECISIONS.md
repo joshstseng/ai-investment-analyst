@@ -35,3 +35,10 @@ Decisions made while building Step 1 that later milestones must follow. Newest l
 ## 2026-11-15: email subjects
 
 - Every subject starts with `[AIA]` and a tag: ACTION (CONFIRMED breach / trailing stop / take-profit / time stop), WARNING (CONFIRMED warning level), REVIEW (DRAFT/PLACEHOLDER rule alerts only), REMINDER (date reminders), HEALTH (feed failure/recovery), DIGEST (daily digest, e.g. `[AIA] DIGEST Mon, Nov 16: 3 active conditions`).
+
+## 2026-11-15: email transport on Railway
+
+- Railway's Hobby plan blocks outbound SMTP (ports 25/465/587), so Gmail SMTP times out there. **Email goes through Resend's HTTPS API when `RESEND_API_KEY` is set** (Railway); Gmail SMTP stays as the fallback when it isn't (local runs).
+- Without a verified domain, Resend sends from `onboarding@resend.dev` and only to the Resend account's own email, so `ALERT_EMAIL_TO` must be that address.
+- Each send carries an idempotency key derived from the alert's `dedupe_key`, so a retry after a lost response can't produce a duplicate.
+- Sending never blocks other jobs: alerts are queued, then sent in the background; a send pass stops at its first failure and passes never overlap.

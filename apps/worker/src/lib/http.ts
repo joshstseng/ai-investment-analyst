@@ -77,6 +77,10 @@ export class RateLimiter {
 
 export interface RequestOptions<S extends z.ZodType> {
   schema: S;
+  /** Defaults to GET. */
+  method?: 'GET' | 'POST';
+  /** JSON-serializable request body (sent with Content-Type: application/json). */
+  body?: unknown;
   headers?: Record<string, string>;
   limiter?: RateLimiter;
   timeoutMs?: number;
@@ -108,7 +112,13 @@ export async function requestJson<S extends z.ZodType>(
     await limiter?.take();
     let retryAfterMs: number | undefined;
     try {
-      const res = await fetchImpl(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
+      const res = await fetchImpl(url, {
+        method: opts.method ?? 'GET',
+        headers:
+          opts.body === undefined ? headers : { 'Content-Type': 'application/json', ...headers },
+        body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
       const text = await res.text();
       if (!res.ok) {
         const ra = Number(res.headers.get('retry-after'));

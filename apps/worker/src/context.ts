@@ -2,7 +2,7 @@ import { createDb } from '@aia/db';
 import { AlpacaClient } from './alpaca/client';
 import { loadEnv } from './env';
 import { log } from './lib/log';
-import { createGmailMailer } from './notify/mailer';
+import { createMailer } from './notify/mailer';
 import { SecClient } from './sec/client';
 
 export function createContext() {
@@ -10,7 +10,7 @@ export function createContext() {
   const { db, sql } = createDb(env.DATABASE_URL);
   const alpaca = new AlpacaClient(env);
   const sec = env.SEC_USER_AGENT ? new SecClient(env.SEC_USER_AGENT) : null;
-  const mailer = createGmailMailer(env, {
+  const mailer = createMailer(env, {
     onRetry: (info) => log.warn('email send retry', info),
   });
   return {

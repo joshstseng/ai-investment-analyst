@@ -75,13 +75,21 @@ export async function sendPending(db: Db, mailer: Mailer | null, now = new Date(
       if (!mailer) {
         await db
           .update(alerts)
-          .set({ error: 'email not configured (GMAIL_USER / GMAIL_APP_PASSWORD / ALERT_EMAIL_TO)' })
+          .set({
+            error:
+              'email not configured (RESEND_API_KEY or GMAIL_USER + GMAIL_APP_PASSWORD, plus ALERT_EMAIL_TO)',
+          })
           .where(eq(alerts.id, a.id));
         failed++;
         continue;
       }
       try {
-        await mailer.send({ subject: a.subject, text: a.body, html: a.html ?? undefined });
+        await mailer.send({
+          subject: a.subject,
+          text: a.body,
+          html: a.html ?? undefined,
+          idempotencyKey: `aia-${a.dedupeKey}`,
+        });
         await db
           .update(alerts)
           .set({ sentAt: new Date(), attempts: a.attempts + 1, error: null })
