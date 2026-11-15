@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.DS_Store
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Personal holdings data — never commit
+data/seed/*
+!data/seed/.gitkeep

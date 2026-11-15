@@ -1,0 +1,12 @@
+# Never ship secrets or personal holdings into the image.
+.env
+.env.*
+data/
+
+# Rebuilt inside the image / not needed at runtime.
+**/node_modules
+.git
+coverage
+**/*.tsbuildinfo
+.DS_Store
+docs/
