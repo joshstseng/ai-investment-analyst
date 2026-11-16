@@ -264,6 +264,21 @@ describe('buildSeedPlan', () => {
       ),
     ).toThrow(/no OTCF in roth_ira/);
   });
+
+  it('applies a broker-confirmed cost_basis_total and rejects one >1% off qty × avg cost', () => {
+    const withTotal = (total: string) =>
+      buildSeedPlan(
+        input({
+          ...OVERRIDES,
+          holdings: [
+            { account: 'roth_ira', ticker: 'XYZ', needs_confirmation: false, cost_basis_total: total },
+          ],
+        }),
+      );
+    const lot = withTotal('150.05').holdings.find((h) => h.symbol === 'XYZ')!;
+    expect(lot).toMatchObject({ needsConfirmation: false, costBasisTotal: '150.05' });
+    expect(() => withTotal('140.00')).toThrow(/cost_basis_total \$140.00 is >1% from/);
+  });
 });
 
 describe('parseEventsCsv', () => {

@@ -52,6 +52,22 @@ export interface DigestPosition {
   takeProfit: DigestLevel | null;
 }
 
+/**
+ * Positions order: best day first, worst last (options by their underlying's move). Positions
+ * with no day % (no data source, missing bar) go at the end; ties are alphabetical.
+ */
+export function byDayMoveDesc(
+  a: Pick<DigestPosition, 'display' | 'dayPct'>,
+  b: Pick<DigestPosition, 'display' | 'dayPct'>,
+): number {
+  if (a.dayPct === null || b.dayPct === null) {
+    if (a.dayPct !== b.dayPct) return a.dayPct === null ? 1 : -1;
+  } else if (a.dayPct !== b.dayPct) {
+    return b.dayPct - a.dayPct;
+  }
+  return a.display.localeCompare(b.display);
+}
+
 export interface DigestData {
   date: string;
   generatedAt: Date;
@@ -419,7 +435,7 @@ export async function gatherDigest(db: Db, date: string, now = new Date()): Prom
     since,
     until,
     weekly,
-    positions: positions.sort((a, b) => a.display.localeCompare(b.display)),
+    positions: positions.sort(byDayMoveDesc),
     active,
     alertsToday,
     notChecked: [...nc].map(([reason, items]) => ({ reason, items })),

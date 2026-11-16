@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FeedAssessment } from '../health/assess';
-import { digestDue, renderDigest, type DigestData } from './digest';
+import { byDayMoveDesc, digestDue, renderDigest, type DigestData } from './digest';
 import { composeHealthAlert, feedTransitions } from './health-alerts';
 import {
   createGmailMailer,
@@ -437,5 +437,26 @@ describe('Resend (HTTPS) mailer', () => {
         RESEND_FROM: env.RESEND_FROM,
       }),
     ).toBeNull();
+  });
+});
+
+describe('digest positions order', () => {
+  it('sorts by day % descending, no-data positions last, ties alphabetical', () => {
+    const rows = [
+      { display: 'ACMX', dayPct: -3.2 },
+      { display: 'NODT', dayPct: null },
+      { display: 'BKX', dayPct: 4.1 },
+      { display: 'ETFX', dayPct: 0.5 },
+      { display: 'AAAX', dayPct: null },
+      { display: 'CCCX', dayPct: 0.5 },
+    ];
+    expect(rows.sort(byDayMoveDesc).map((r) => r.display)).toEqual([
+      'BKX',
+      'CCCX',
+      'ETFX',
+      'ACMX',
+      'AAAX',
+      'NODT',
+    ]);
   });
 });

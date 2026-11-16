@@ -246,6 +246,23 @@ export function buildSeedPlan(input: SeedInput): SeedPlan {
       lot.needsConfirmation = o.needs_confirmation;
       lot.confirmationNote = o.confirmation_note ?? null;
     }
+    if (o.cost_basis_total) {
+      if (lots.length !== 1) {
+        throw new SeedPlanError(
+          `seed-overrides holdings: cost_basis_total for ${o.ticker} needs exactly 1 lot (found ${lots.length})`,
+        );
+      }
+      const lot = lots[0]!;
+      const multiplier = BigInt(instruments.get(symbol)!.multiplier);
+      const implied = (toMicros(lot.quantity) * toMicros(lot.avgCost) * multiplier) / 1_000_000n;
+      const diff = implied - toMicros(o.cost_basis_total);
+      if ((diff < 0n ? -diff : diff) * 100n > toMicros(o.cost_basis_total)) {
+        throw new SeedPlanError(
+          `seed-overrides holdings: ${o.ticker} cost_basis_total $${o.cost_basis_total} is >1% from holdings.md qty × avg cost ($${fromMicros(implied)})`,
+        );
+      }
+      lot.costBasisTotal = o.cost_basis_total;
+    }
   }
 
   // --- Theses (positions.csv + overrides) -------------------------------------------------------

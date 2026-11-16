@@ -62,6 +62,8 @@ export const seedOverridesSchema = z
             ticker: tickerRef,
             needs_confirmation: z.boolean(),
             confirmation_note: z.string().optional(),
+            /** Broker-confirmed total cost basis; single-lot holdings only, within 1% of qty × avg cost. */
+            cost_basis_total: decimal.optional(),
           })
           .strict(),
       )
