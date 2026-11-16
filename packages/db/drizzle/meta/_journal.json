@@ -78,6 +78,27 @@
       "when": 1794778816808,
       "tag": "0010_alert_html",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794842907602,
+      "tag": "0011_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794843819394,
+      "tag": "0012_econ_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794844109415,
+      "tag": "0013_filing_details",
+      "breakpoints": true
     }
   ]
 }

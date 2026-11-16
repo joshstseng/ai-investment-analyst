@@ -12,7 +12,14 @@ import { collectDailyBars } from './market/bars';
 import { loadUniverse } from './market/universe';
 import { collectNews } from './news/backfill';
 import { NewsStreamManager } from './news/run-stream';
-import { calendarJob, ciksJob, closeCheckJob, feedHealthJob } from './schedule/jobs';
+import {
+  calendarJob,
+  ciksJob,
+  closeCheckJob,
+  earningsJob,
+  eventsRefreshJob,
+  feedHealthJob,
+} from './schedule/jobs';
 import { scheduleDefinitions, startScheduler } from './schedule/scheduler';
 import { collectFilings } from './sec/filings';
 
@@ -73,6 +80,10 @@ if (env.NEWS_STREAM_ENABLED) {
   });
 }
 
+// Events (rules/derived, dividends/splits, econ calendar) and earnings, so a morning email sent
+// by catch-up after a deploy isn't missing them. Both are budget/once-a-day guarded.
+await safely('events_refresh', () => eventsRefreshJob(ctx));
+await safely('earnings', () => earningsJob(ctx));
 await safely('close_check', async () => log.info(`close check: ${await closeCheckJob(ctx)}`));
 await safely('feed_health', () => feedHealthJob(ctx));
 

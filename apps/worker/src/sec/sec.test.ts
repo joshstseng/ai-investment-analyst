@@ -4,12 +4,24 @@ import { resolveCiks } from './ciks';
 import { isTrackedForm, toFilingRows } from './filings';
 
 describe('isTrackedForm', () => {
-  it.each(['8-K', '8-K/A', '10-Q', '10-K', '10-K/A', 'S-1', 'S-1/A', '424B2', '424B5'])(
-    'tracks %s',
-    (f) => expect(isTrackedForm(f)).toBe(true),
-  );
-  it.each(['4', 'SC 13G', 'DEF 14A', '6-K', '424B9', 'S-8', '8-K12B', 'N-CSR'])('ignores %s', (f) =>
-    expect(isTrackedForm(f)).toBe(false),
+  it.each([
+    '8-K',
+    '8-K/A',
+    '10-Q',
+    '10-K',
+    '10-K/A',
+    'S-1',
+    'S-1/A',
+    'S-3',
+    'S-3ASR',
+    '424B2',
+    '424B5',
+    '4',
+    '4/A',
+  ])('tracks %s', (f) => expect(isTrackedForm(f)).toBe(true));
+  it.each(['3', '5', 'SC 13G', 'DEF 14A', '6-K', '424B9', 'S-8', '8-K12B', 'N-CSR'])(
+    'ignores %s',
+    (f) => expect(isTrackedForm(f)).toBe(false),
   );
 });
 
@@ -47,7 +59,7 @@ describe('toFilingRows', () => {
   });
 
   it('keeps tracked forms since the cutoff, with ticker, items and URL', () => {
-    expect(rows.map((r) => r.form)).toEqual(['8-K', '424B5']);
+    expect(rows.map((r) => r.form)).toEqual(['8-K', '4', '424B5']);
     expect(rows[0]).toMatchObject({
       accession: '0009999999-26-000123',
       cik: '0000123456',
@@ -61,8 +73,8 @@ describe('toFilingRows', () => {
   });
 
   it('falls back to the filing index when there is no primary document', () => {
-    expect(rows[1]!.url).toBe('https://www.sec.gov/Archives/edgar/data/123456/x/x-index.htm');
-    expect(rows[1]!.items).toEqual([]);
+    expect(rows[2]!.url).toBe('https://www.sec.gov/Archives/edgar/data/123456/x/x-index.htm');
+    expect(rows[2]!.items).toEqual([]);
   });
 });
 

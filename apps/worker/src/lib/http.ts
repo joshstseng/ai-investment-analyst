@@ -81,6 +81,8 @@ export interface RequestOptions<S extends z.ZodType> {
   method?: 'GET' | 'POST';
   /** JSON-serializable request body (sent with Content-Type: application/json). */
   body?: unknown;
+  /** 'text' passes the raw body string to the schema instead of parsed JSON. Default 'json'. */
+  responseType?: 'json' | 'text';
   headers?: Record<string, string>;
   limiter?: RateLimiter;
   timeoutMs?: number;
@@ -125,7 +127,7 @@ export async function requestJson<S extends z.ZodType>(
         if (Number.isFinite(ra) && ra > 0) retryAfterMs = ra * 1000;
         throw new HttpError(res.status, url, text);
       }
-      return schema.parse(JSON.parse(text)) as z.infer<S>;
+      return schema.parse(opts.responseType === 'text' ? text : JSON.parse(text)) as z.infer<S>;
     } catch (error) {
       const retryable =
         error instanceof HttpError

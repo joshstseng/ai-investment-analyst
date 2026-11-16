@@ -1,13 +1,54 @@
 import { filings, type Db } from '@aia/db';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { parseForm4Xml } from './form4';
 import type { JobResult } from '../lib/jobs';
 import { log } from '../lib/log';
 import { setDataStatus, type DataStatusRow } from '../market/data-status';
 import type { SecClient, Submissions } from './client';
 import { loadCompanyCiks } from './ciks';
 
-/** Forms we store: 8-K, 10-Q, 10-K, S-1 (and their amendments), and 424B1–424B8 prospectuses. */
+/**
+ * Forms we store: 8-K, 10-Q, 10-K, S-1, S-3/S-3ASR (and amendments), 424B1–424B8 prospectuses,
+ * and Form 4 insider transactions (with their XML parsed into `details`).
+ */
 export function isTrackedForm(form: string): boolean {
-  return /^(8-K|10-Q|10-K|S-1)(\/A)?$/.test(form) || /^424B[1-8]$/.test(form);
+  return /^(8-K|10-Q|10-K|S-1|S-3|S-3ASR|4)(\/A)?$/.test(form) || /^424B[1-8]$/.test(form);
+}
+
+/** Form 4s to parse per run (each is one SEC request); the rest wait for the next poll. */
+export const FORM4_PARSE_LIMIT = 60;
+
+/**
+ * Parses Form 4 XML for filings that don't have details yet (new ones, plus any earlier
+ * failures). A document that fails to parse is marked so it isn't retried forever.
+ */
+export async function enrichForm4s(db: Db, sec: SecClient, limit = FORM4_PARSE_LIMIT) {
+  const pending = await db
+    .select({ id: filings.id, url: filings.url, ticker: filings.ticker })
+    .from(filings)
+    .where(and(inArray(filings.form, ['4', '4/A']), isNull(filings.details)))
+    .orderBy(desc(filings.filedAt))
+    .limit(limit);
+  let parsed = 0;
+  let failed = 0;
+  for (const f of pending) {
+    try {
+      const xml = await sec.text(f.url.replace(/\/xsl[^/]+\//, '/'));
+      await db
+        .update(filings)
+        .set({ details: { form4: parseForm4Xml(xml) } })
+        .where(eq(filings.id, f.id));
+      parsed++;
+    } catch (error) {
+      await db
+        .update(filings)
+        .set({ details: { parseError: String(error).slice(0, 300) } })
+        .where(eq(filings.id, f.id));
+      failed++;
+      log.warn('form 4 parse failed', { ticker: f.ticker, url: f.url, error: String(error) });
+    }
+  }
+  return { pending: pending.length, parsed, failed };
 }
 
 export type FilingRow = typeof filings.$inferInsert;
@@ -122,9 +163,11 @@ export async function collectFilings(
   }
   await setDataStatus(db, statuses, now);
   if (failed.length === byCik.size) throw new Error(`EDGAR: all ${failed.length} companies failed`);
+  const form4 = await enrichForm4s(db, sec);
   return {
     items: inserted,
     meta: {
+      form4,
       companies: byCik.size,
       since: since.toISOString(),
       fetched,

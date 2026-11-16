@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { parseEventsCsv } from './events-csv';
 import { parseHoldingsMd } from './holdings-md';
 import { EMPTY_OVERRIDES, seedOverridesSchema } from './overrides';
 import { buildSeedPlan, type SeedPlan } from './plan';
@@ -7,6 +8,7 @@ import { parsePositionsCsv } from './positions-csv';
 import { parseWatchlistCsv } from './watchlist-csv';
 
 export * from './apply';
+export * from './events-csv';
 export * from './errors';
 export * from './holdings-md';
 export * from './overrides';
@@ -26,6 +28,7 @@ export function loadSeedDir(dir: string) {
   const positionsText = read('positions.csv');
   const watchlistText = read('watchlist.csv');
   const overridesText = read('seed-overrides.json');
+  const eventsText = read('events.csv');
 
   const input = {
     holdingsMd: parseHoldingsMd(holdingsText),
@@ -34,12 +37,14 @@ export function loadSeedDir(dir: string) {
     overrides: overridesText
       ? seedOverridesSchema.parse(JSON.parse(overridesText))
       : EMPTY_OVERRIDES,
+    events: eventsText ? parseEventsCsv(eventsText) : [],
   };
   const plan: SeedPlan = buildSeedPlan(input);
   const missingFiles = [
     !positionsText && 'positions.csv',
     !watchlistText && 'watchlist.csv',
     !overridesText && 'seed-overrides.json',
+    !eventsText && 'events.csv',
   ].filter(Boolean) as string[];
   if (missingFiles.length) plan.warnings.unshift(`not found (skipped): ${missingFiles.join(', ')}`);
   return { input, plan };

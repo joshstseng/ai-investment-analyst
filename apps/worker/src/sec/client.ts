@@ -78,4 +78,17 @@ export class SecClient {
   submissions(cik: string) {
     return this.get(`https://data.sec.gov/submissions/CIK${padCik(cik)}.json`, submissionsSchema);
   }
+
+  /** A raw document (e.g. Form 4 XML) as text, under the same fair-access limits. */
+  text(url: string) {
+    return requestJson(url, {
+      schema: z.string(),
+      responseType: 'text',
+      headers: this.headers,
+      limiter: this.limiter,
+      timeoutMs: 20_000,
+      retries: 2,
+      fetchImpl: this.opts.fetchImpl,
+    });
+  }
 }

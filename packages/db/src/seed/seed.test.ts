@@ -265,3 +265,73 @@ describe('buildSeedPlan', () => {
     ).toThrow(/no OTCF in roth_ira/);
   });
 });
+
+describe('parseEventsCsv', () => {
+  const header = 'date,ticker,event_type,title,notes,confirmed';
+  it('parses rows, time of day and confirmed flags into seed events', async () => {
+    const { parseEventsCsv, seedEventInputs } = await import('./events-csv');
+    const rows = parseEventsCsv(
+      `${header}\n2026-11-19,acmx,earnings,"Q1 results (after close; call 1:30 PM PT)",note,true\n2026-12-09,BKX,earnings,Q4 results,Estimated,false\n`,
+    );
+    expect(seedEventInputs(rows)).toEqual([
+      {
+        ticker: 'ACMX',
+        eventType: 'earnings',
+        date: '2026-11-19',
+        timeOfDay: 'after_close',
+        title: 'Q1 results (after close; call 1:30 PM PT)',
+        notes: 'note',
+        confirmed: true,
+        estimated: false,
+        source: 'seed',
+        sourceRef: 'ACMX:earnings:2026-11-19',
+      },
+      expect.objectContaining({
+        ticker: 'BKX',
+        confirmed: false,
+        estimated: true,
+        timeOfDay: 'unknown',
+      }),
+    ]);
+  });
+
+  it.each([
+    ['bad date', '2026-13-01,ACMX,earnings,t,,true', /bad date/],
+    ['unknown type', '2026-12-01,ACMX,party,t,,true', /unknown event_type/],
+    ['bad confirmed', '2026-12-01,ACMX,earnings,t,,maybe', /confirmed must be true or false/],
+    ['missing title', '2026-12-01,ACMX,earnings,,,true', /title is required/],
+  ])('rejects %s with a line number', async (_name, row, message) => {
+    const { parseEventsCsv } = await import('./events-csv');
+    expect(() => parseEventsCsv(`${header}\n${row}\n`)).toThrow(message);
+    expect(() => parseEventsCsv(`${header}\n${row}\n`)).toThrow(/events\.csv:2/);
+  });
+
+  it('warns about seeded events for tickers that are not followed', () => {
+    const plan = buildSeedPlan({
+      ...input(),
+      events: [
+        {
+          line: 2,
+          date: '2026-12-01',
+          ticker: 'ZZZZ',
+          eventType: 'earnings',
+          title: 't',
+          notes: null,
+          confirmed: false,
+        },
+        {
+          line: 3,
+          date: '2027-03-19',
+          ticker: 'OPTQ',
+          eventType: 'option_expiry',
+          title: 't',
+          notes: null,
+          confirmed: true,
+        },
+      ],
+    });
+    expect(plan.events).toHaveLength(2);
+    expect(plan.warnings).toContain('events.csv:2: ZZZZ is not a holding or on the watchlist');
+    expect(plan.warnings.some((w) => w.includes('OPTQ'))).toBe(false); // option underlying counts
+  });
+});

@@ -8,6 +8,7 @@ import { HttpError, RateLimiter, requestJson } from '../lib/http';
 import { log } from '../lib/log';
 import {
   barsPageSchema,
+  corporateActionsPageSchema,
   calendarDaySchema,
   clockSchema,
   newsPageSchema,
@@ -15,6 +16,8 @@ import {
   type AlpacaBar,
   type AlpacaNewsItem,
   type AlpacaSnapshot,
+  type CashDividend,
+  type Split,
 } from './schemas';
 
 export type Feed = 'sip' | 'iex';
@@ -93,11 +96,18 @@ export class AlpacaClient {
   }
 
   /** Daily bars (split-adjusted) for many symbols, all pages. Symbols with no data are absent. */
+  /** 1-minute bars (includes extended hours), all pages. */
+  minuteBars(p: { symbols: readonly string[]; start: string; end: string; feed: Feed }) {
+    return this.dailyBars({ ...p, timeframe: '1Min' });
+  }
+
   async dailyBars(p: {
     symbols: readonly string[];
     start: string;
     end: string;
     feed: Feed;
+    /** Defaults to daily bars. */
+    timeframe?: '1Day' | '1Min';
   }): Promise<Map<string, AlpacaBar[]>> {
     const out = new Map<string, AlpacaBar[]>();
     for (const group of chunk(p.symbols, 50)) {
@@ -106,7 +116,7 @@ export class AlpacaClient {
         const page = await this.get(
           this.dataUrl('/v2/stocks/bars', {
             symbols: group.join(','),
-            timeframe: '1Day',
+            timeframe: p.timeframe ?? '1Day',
             start: p.start,
             end: p.end,
             feed: p.feed,
@@ -163,5 +173,34 @@ export class AlpacaClient {
       } while (pageToken);
     }
     return items;
+  }
+
+  /** Cash dividends and forward/reverse splits for symbols in a date window, all pages. */
+  async corporateActions(p: { symbols: readonly string[]; start: string; end: string }) {
+    const dividends: CashDividend[] = [];
+    const forwardSplits: Split[] = [];
+    const reverseSplits: Split[] = [];
+    for (const group of chunk(p.symbols, 50)) {
+      let pageToken: string | undefined;
+      do {
+        const page = await this.get(
+          this.dataUrl('/v1/corporate-actions', {
+            symbols: group.join(','),
+            start: p.start,
+            end: p.end,
+            types: 'cash_dividend,forward_split,reverse_split',
+            limit: '1000',
+            page_token: pageToken,
+          }),
+          corporateActionsPageSchema,
+          this.dataLimiter,
+        );
+        dividends.push(...(page.corporate_actions.cash_dividends ?? []));
+        forwardSplits.push(...(page.corporate_actions.forward_splits ?? []));
+        reverseSplits.push(...(page.corporate_actions.reverse_splits ?? []));
+        pageToken = page.next_page_token ?? undefined;
+      } while (pageToken);
+    }
+    return { dividends, forwardSplits, reverseSplits };
   }
 }

@@ -1,6 +1,6 @@
 import { addDays, nyDate } from '@aia/core';
-import { pricesDaily, type Db } from '@aia/db';
-import { count, getTableColumns, inArray, or, sql } from 'drizzle-orm';
+import { pricesDaily, symbolDataStatus, type Db } from '@aia/db';
+import { and, count, eq, getTableColumns, inArray, or, sql } from 'drizzle-orm';
 import { isSubscriptionError, type AlpacaClient, type Feed } from '../alpaca/client';
 import type { AlpacaBar } from '../alpaca/schemas';
 import type { JobResult } from '../lib/jobs';
@@ -11,6 +11,9 @@ import type { Universe } from './universe';
 
 /** SIP data on the free plan is only queryable 15 minutes after the fact; keep a margin. */
 export const BAR_SETTLE_MS = 16 * 60 * 1000;
+
+/** Days of history a full backfill covers. */
+export const FULL_HISTORY_DAYS = 365;
 
 export interface BarRow {
   symbol: string;
@@ -102,6 +105,39 @@ export async function collectDailyBars(
 ): Promise<JobResult> {
   const now = p.now ?? new Date();
   const symbols = p.universe.priceSymbols;
+
+  // Symbols added since the last full backfill (e.g. new watchlist tickers) get a year of
+  // history now, rather than waiting for the next worker restart. Symbols known to have no
+  // data source are skipped so they don't cost a request on every refresh.
+  let backfilled: string[] = [];
+  if (p.days < FULL_HISTORY_DAYS) {
+    const [stored, noData] = await Promise.all([
+      db
+        .selectDistinct({ symbol: pricesDaily.symbol })
+        .from(pricesDaily)
+        .where(inArray(pricesDaily.symbol, [...symbols])),
+      db
+        .select({ symbol: symbolDataStatus.symbol })
+        .from(symbolDataStatus)
+        .where(
+          and(
+            eq(symbolDataStatus.dataset, 'daily_bars'),
+            eq(symbolDataStatus.status, 'no_data_source'),
+          ),
+        ),
+    ]);
+    const skip = new Set([...stored, ...noData].map((r) => r.symbol));
+    backfilled = symbols.filter((s) => !skip.has(s));
+    if (backfilled.length) {
+      log.info('backfilling a year of bars for new symbols', { symbols: backfilled });
+      await collectDailyBars(db, client, {
+        ...p,
+        universe: { ...p.universe, priceSymbols: backfilled, optionContracts: [] },
+        days: FULL_HISTORY_DAYS,
+      });
+    }
+  }
+
   const start = addDays(nyDate(now), -p.days);
   const sessions = await loadSessions(db, addDays(start, -5), nyDate(now));
   if (sessions.size === 0) throw new Error('market_calendar is empty; run the calendar sync first');
@@ -199,6 +235,7 @@ export async function collectDailyBars(
       symbols: symbols.length,
       barsReceived: allRows.length,
       barsWritten: written,
+      backfilledNewSymbols: backfilled,
       skippedIncomplete: incomplete,
       noDataSource: statuses.filter((s) => s.status === 'no_data_source').map((s) => s.symbol),
       stale: statuses.filter((s) => s.status === 'stale').map((s) => s.symbol),

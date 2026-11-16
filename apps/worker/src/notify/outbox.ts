@@ -13,7 +13,7 @@ const RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export interface NewAlert {
   dedupeKey: string;
-  kind: 'rule' | 'health' | 'digest' | 'test';
+  kind: 'rule' | 'health' | 'digest' | 'morning' | 'test';
   severity: 'info' | 'warn' | 'critical';
   channel: 'email' | 'digest';
   subject: string;

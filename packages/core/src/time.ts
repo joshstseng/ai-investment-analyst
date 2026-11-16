@@ -81,3 +81,21 @@ export function inEdgarWindow(instant: Date): boolean {
   const h = laHour(instant);
   return h >= 5 && h < 21;
 }
+
+const laDateFormat = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Los_Angeles',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/** Calendar date (YYYY-MM-DD) of `instant` in America/Los_Angeles. */
+export function laDate(instant: Date): string {
+  return laDateFormat.format(instant);
+}
+
+/** Monday (YYYY-MM-DD) of the week containing `isoDate`. */
+export function weekStart(isoDate: string): string {
+  const dow = (new Date(`${isoDate}T00:00:00Z`).getUTCDay() + 6) % 7;
+  return addDays(isoDate, -dow);
+}

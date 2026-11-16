@@ -19,6 +19,8 @@ import {
 import type { AccountType, ParsedHoldingsMd } from './holdings-md';
 import type { ParsedPositionRow, PositionType, ThesisStatus } from './positions-csv';
 import type { SeedOverrides } from './overrides';
+import type { EventInput } from '../events';
+import { seedEventInputs, type ParsedEventRow } from './events-csv';
 import type { ParsedWatchlistRow } from './watchlist-csv';
 
 export const ACCOUNT_NAMES: Record<AccountType, string> = {
@@ -102,6 +104,8 @@ export interface SeedPlan {
   theses: ThesisPlan[];
   rules: RulePlan[];
   watchlist: WatchlistPlan[];
+  /** One-time seed events (events.csv). */
+  events: EventInput[];
   warnings: string[];
 }
 
@@ -110,6 +114,8 @@ export interface SeedInput {
   positions: ParsedPositionRow[];
   watchlist: ParsedWatchlistRow[];
   overrides: SeedOverrides;
+  /** events.csv rows (optional file). */
+  events?: ParsedEventRow[];
 }
 
 export class SeedPlanError extends Error {
@@ -413,6 +419,23 @@ export function buildSeedPlan(input: SeedInput): SeedPlan {
       (a, b) => a.symbol.localeCompare(b.symbol) || a.externalKey.localeCompare(b.externalKey),
     ),
     watchlist: watchPlans,
+    events: planEvents(input.events ?? [], instruments, warnings),
     warnings,
   };
+}
+
+/** Seed events, warning about tickers we don't follow (they get no news/filings/prices). */
+function planEvents(
+  rows: readonly ParsedEventRow[],
+  instruments: ReadonlyMap<string, InstrumentPlan>,
+  warnings: string[],
+): EventInput[] {
+  const followed = new Set<string>();
+  for (const i of instruments.values()) followed.add(i.underlyingSymbol ?? i.symbol);
+  for (const r of rows) {
+    if (!followed.has(r.ticker)) {
+      warnings.push(`events.csv:${r.line}: ${r.ticker} is not a holding or on the watchlist`);
+    }
+  }
+  return seedEventInputs(rows);
 }

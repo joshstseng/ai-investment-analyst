@@ -3,10 +3,19 @@
  * Rows whose values are unchanged are not touched (updated_at stays put).
  * Rows in the DB that the plan no longer contains are reported, never deleted.
  */
-import { getTableColumns, notInArray, or, sql, type SQL } from 'drizzle-orm';
+import { type SQL, eq, getTableColumns, notInArray, or, sql } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
-import type { Tx } from '../client';
-import { accounts, exitRules, holdings, instruments, positionTheses, watchlist } from '../schema';
+import type { Db, Tx } from '../client';
+import { reconcileStoredEvents, upsertEvents } from '../events';
+import {
+  accounts,
+  events,
+  exitRules,
+  holdings,
+  instruments,
+  positionTheses,
+  watchlist,
+} from '../schema';
 import type { SeedPlan } from './plan';
 
 export interface UpsertCount {
@@ -17,7 +26,7 @@ export interface UpsertCount {
 
 export interface ApplyReport {
   counts: Record<
-    'accounts' | 'instruments' | 'holdings' | 'theses' | 'exitRules' | 'watchlist',
+    'accounts' | 'instruments' | 'holdings' | 'theses' | 'exitRules' | 'watchlist' | 'events',
     UpsertCount
   >;
   /** DB rows not present in the seed (left in place; review manually). */
@@ -184,6 +193,19 @@ export async function applySeedPlan(tx: Tx, plan: SeedPlan): Promise<ApplyReport
     .where(watchIds.length ? notInArray(watchlist.instrumentId, watchIds) : undefined);
   for (const w of staleWatch) stale.push(`watchlist id=${w.id} is not in watchlist.csv`);
 
+  // Seed events (events.csv), then source precedence across all events.
+  const ev = await upsertEvents(tx as unknown as Db, plan.events);
+  const seedRefs = new Set(plan.events.map((e) => e.sourceRef));
+  const storedSeed = await tx
+    .select({ ref: events.sourceRef, status: events.status })
+    .from(events)
+    .where(eq(events.source, 'seed'));
+  for (const e of storedSeed) {
+    if (!seedRefs.has(e.ref) && e.status !== 'cancelled')
+      stale.push(`event ${e.ref} is no longer in events.csv`);
+  }
+  await reconcileStoredEvents(tx as unknown as Db);
+
   return {
     counts: {
       accounts: count(plan.accounts.length, accRes),
@@ -192,6 +214,7 @@ export async function applySeedPlan(tx: Tx, plan: SeedPlan): Promise<ApplyReport
       theses: count(thesisRows.length, thRes),
       exitRules: count(ruleRows.length, ruleRes),
       watchlist: count(watchRows.length, wRes),
+      events: { inserted: ev.inserted, updated: ev.updated, unchanged: ev.unchanged },
     },
     stale,
   };

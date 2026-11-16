@@ -11,6 +11,9 @@
  *   bars_refresh   0 14 * * 1-5         trading day per calendar
  *   feed_health    5 * * * *            hourly (also refreshes the news stream's symbols)
  *   digest         *\/5 14-20 * * 1-5    due: trading day, at/after 2:15 PM PT, once per session
+ *   events_refresh 0 5 * * 1-5         5:00 AM: rule/derived events, dividends/splits, econ calendar
+ *   earnings       0,30 5 * * 1-5      5:00 AM (5:30 only if 5:00 failed; ≤ 2 Alpha Vantage calls/day)
+ *   morning        *\/5 5-11 * * 1-5     due: weekdays from 5:45 AM PT, once per day (holiday version too)
  *   outbox_retry   *\/10 * * * *         resend failed alerts (max 5 attempts within 24 h)
  */
 import { Cron } from 'croner';
@@ -23,6 +26,9 @@ import {
   ciksJob,
   closeCheckJob,
   digestJob,
+  earningsJob,
+  eventsRefreshJob,
+  morningJob,
   outboxJob,
   edgarJob,
   feedHealthJob,
@@ -49,6 +55,9 @@ export function scheduleDefinitions(
     { name: 'close_check', pattern: '*/5 * * * *', run: () => closeCheckJob(ctx) },
     { name: 'bars_refresh', pattern: '0 14 * * 1-5', run: () => barsRefreshJob(ctx) },
     { name: 'digest', pattern: '*/5 14-20 * * 1-5', run: () => digestJob(ctx) },
+    { name: 'events_refresh', pattern: '0 5 * * 1-5', run: () => eventsRefreshJob(ctx) },
+    { name: 'earnings', pattern: '0,30 5 * * 1-5', run: () => earningsJob(ctx) },
+    { name: 'morning', pattern: '*/5 5-11 * * 1-5', run: () => morningJob(ctx) },
     { name: 'outbox_retry', pattern: '*/10 * * * *', run: () => outboxJob(ctx) },
     {
       name: 'feed_health',

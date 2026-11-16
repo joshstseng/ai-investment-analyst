@@ -39,7 +39,7 @@ describe.skipIf(!url)('seed import (Postgres)', () => {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(4242)`);
         // Isolate from any real seeded data: start each test from empty portfolio tables.
         await tx.execute(
-          sql`TRUNCATE holdings, exit_rules, position_theses, watchlist, instruments, accounts RESTART IDENTITY CASCADE`,
+          sql`TRUNCATE holdings, exit_rules, position_theses, watchlist, instruments, accounts, events RESTART IDENTITY CASCADE`,
         );
         await fn(tx);
         throw new Rollback();

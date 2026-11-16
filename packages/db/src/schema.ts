@@ -11,7 +11,16 @@
  * - Market-data tables are keyed by plain symbol text (they also hold SPY/QQQ and option
  *   underlyings that are not instruments we own).
  */
-import { RULE_PURPOSES, RULE_STATUSES, RULE_TYPES } from '@aia/core';
+import {
+  EVENT_SOURCES,
+  EVENT_STATUSES,
+  EVENT_TIMES,
+  EVENT_TYPES,
+  RULE_PURPOSES,
+  RULE_STATUSES,
+  RULE_TYPES,
+  type DateChange,
+} from '@aia/core';
 import { sql } from 'drizzle-orm';
 import {
   bigint,
@@ -113,6 +122,11 @@ export const ruleOutcomeEnum = pgEnum('rule_outcome', ['fired', 'not_fired', 'no
 export const filingViaEnum = pgEnum('filing_via', ['backfill', 'poll']);
 
 export const newsViaEnum = pgEnum('news_via', ['rest', 'stream']);
+
+export const eventTypeEnum = pgEnum('event_type', EVENT_TYPES);
+export const eventSourceEnum = pgEnum('event_source', EVENT_SOURCES);
+export const eventTimeEnum = pgEnum('event_time', EVENT_TIMES);
+export const eventStatusEnum = pgEnum('event_status', EVENT_STATUSES);
 
 // ---------------------------------------------------------------------------------------------
 // Portfolio
@@ -417,6 +431,8 @@ export const filings = pgTable(
     filedAt: tstz('filed_at').notNull(),
     url: text('url').notNull(),
     receivedAt: tstz('received_at').notNull().defaultNow(),
+    /** Parsed details, e.g. Form 4 buys/sells: { form4: Form4Summary } or { parseError }. */
+    details: jsonb('details').$type<Record<string, unknown>>(),
     /** 'poll' = seen by the regular poll; latency (received_at - filed_at) is meaningful only for these. */
     via: filingViaEnum('via').notNull(),
     ...timestamps,
@@ -500,7 +516,7 @@ export const alerts = pgTable(
       () => ruleEvaluations.id,
       { onDelete: 'set null' },
     ),
-    /** 'rule' | 'health' | 'digest' | 'test' */
+    /** 'rule' | 'health' | 'digest' | 'morning' | 'test' */
     kind: text('kind').notNull().default('rule'),
     asOfDate: date('as_of_date', { mode: 'string' }),
     sentAt: tstz('sent_at'),
@@ -509,6 +525,93 @@ export const alerts = pgTable(
     ...timestamps,
   },
   (t) => [index('alerts_unsent_idx').on(t.channel, t.sentAt)],
+);
+
+/**
+ * Dated events per ticker (the underlying for options). Filled automatically: seeded once from
+ * events.csv, earnings from Alpha Vantage, dividends/splits from Alpaca, reminders from rules,
+ * option expiries and IPO lockups derived from our data, and (later) events an AI step extracts
+ * from news and filings. Precedence between sources is decided by reconcileEvents in @aia/core;
+ * a superseded event is kept (status=superseded, superseded_by_id) rather than deleted.
+ */
+export const events = pgTable(
+  'events',
+  {
+    id: serial('id').primaryKey(),
+    ticker: text('ticker').notNull(),
+    eventType: eventTypeEnum('event_type').notNull(),
+    /** Event date (America/New_York trading date). */
+    date: date('date', { mode: 'string' }).notNull(),
+    timeOfDay: eventTimeEnum('time_of_day').notNull().default('unknown'),
+    title: text('title').notNull(),
+    /** Human notes (from the seed file or the source). */
+    notes: text('notes'),
+    /** System notes, e.g. "replaced seeded estimate 12/9 (+1 day)". Rewritten by reconcile. */
+    autoNote: text('auto_note'),
+    fiscalPeriod: text('fiscal_period'),
+    epsEstimate: money('eps_estimate'),
+    /** Dividend per share, or split ratio (new/old). */
+    amount: money('amount'),
+    confirmed: boolean('confirmed').notNull().default(false),
+    estimated: boolean('estimated').notNull().default(false),
+    source: eventSourceEnum('source').notNull(),
+    /** Stable id within the source (rule key, Alpaca action id, …); makes syncs idempotent. */
+    sourceRef: text('source_ref').notNull(),
+    sourceUrl: text('source_url'),
+    /** 0–1, for ai_extracted events. */
+    confidence: numeric('confidence', { precision: 4, scale: 3 }),
+    status: eventStatusEnum('status').notNull().default('active'),
+    supersededById: integer('superseded_by_id'),
+    /** Set when the source reports a new date: the date before the latest change. */
+    previousDate: date('previous_date', { mode: 'string' }),
+    dateChangedAt: tstz('date_changed_at'),
+    /** Every date change seen: [{from, to, at, source}]. */
+    history: jsonb('history').$type<DateChange[]>().notNull().default([]),
+    fetchedAt: tstz('fetched_at'),
+    ...timestamps,
+  },
+  (t) => [
+    unique('events_source_ref').on(t.source, t.sourceRef),
+    index('events_date_idx').on(t.date),
+    index('events_ticker_type_idx').on(t.ticker, t.eventType),
+    check(
+      'events_ai_provenance',
+      sql`${t.source} <> 'ai_extracted' OR (${t.confidence} IS NOT NULL AND ${t.sourceUrl} IS NOT NULL)`,
+    ),
+    check(
+      'events_confidence_range',
+      sql`${t.confidence} IS NULL OR (${t.confidence} >= 0 AND ${t.confidence} <= 1)`,
+    ),
+  ],
+);
+
+/**
+ * Economic calendar (ForexFactory weekly feed, unofficial): USD events of High/Medium impact.
+ * Market-wide, so separate from per-ticker `events`. `actual` is only stored when the feed
+ * provides it (the weekly feed normally doesn't); values are never inferred.
+ */
+export const econEvents = pgTable(
+  'econ_events',
+  {
+    id: serial('id').primaryKey(),
+    source: text('source').notNull(),
+    title: text('title').notNull(),
+    country: text('country').notNull(),
+    /** 'High' | 'Medium' (others are not stored). */
+    impact: text('impact').notNull(),
+    /** Release time (UTC). All-day / tentative items are stored at their date with allDay=true. */
+    at: tstz('at').notNull(),
+    allDay: boolean('all_day').notNull().default(false),
+    forecast: text('forecast'),
+    previous: text('previous'),
+    actual: text('actual'),
+    fetchedAt: tstz('fetched_at').notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    unique('econ_events_source_title_at').on(t.source, t.title, t.at),
+    index('econ_events_at_idx').on(t.at),
+  ],
 );
 
 /** Alert policy state per rule (see decideAlert in @aia/core). */

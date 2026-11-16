@@ -7,6 +7,10 @@
  *   pnpm collect stream [--minutes 5]    (run the news websocket for a while)
  *   pnpm collect ciks                    (refresh ticker → SEC CIK map)
  *   pnpm collect filings [--days 30]     (EDGAR; --days > 1 is recorded as a backfill)
+ *   pnpm collect earnings                (Alpha Vantage earnings calendar; ≤ 2 calls/day)
+ *   pnpm collect events [--force]        (rules/derived, dividends/splits, econ calendar; list upcoming)
+ *   pnpm collect morning [--dry-run|--send] [--as-of ISO]  (morning email)
+ *   pnpm collect levels [--as-of ISO]    (pre-market prices + levels to watch)
  *   pnpm collect check [--date YYYY-MM-DD]  (evaluate rules for the latest completed session)
  *   pnpm collect due                     (run the close check if one is due)
  *   pnpm collect health [--alert]        (feed health pass; --alert emails failures/recoveries)
@@ -17,8 +21,9 @@
  *   pnpm collect status                  (coverage + feed latency report)
  */
 import { parseArgs } from 'node:util';
-import { filings, newsItems, pricesDaily, symbolDataStatus } from '@aia/db';
-import { count, desc, eq, max, sql } from 'drizzle-orm';
+import { events as eventsTable, filings, newsItems, pricesDaily, symbolDataStatus } from '@aia/db';
+import { nyDate } from '@aia/core';
+import { count, desc, eq, gte, max, sql } from 'drizzle-orm';
 import { createContext } from './context';
 import { runJob } from './lib/jobs';
 import { collectDailyBars } from './market/bars';
@@ -26,11 +31,15 @@ import { syncCalendar } from './market/calendar';
 import { collectQuotes } from './market/quotes';
 import { loadUniverse } from './market/universe';
 import { collectNews } from './news/backfill';
+import { printLevels } from './morning/inspect';
+import { gatherMorning } from './morning/gather';
+import { renderMorning } from './morning/render';
+import { enqueueAlert } from './notify/outbox';
 import { NewsStreamManager } from './news/run-stream';
 import { runFeedHealth } from './health/run';
 import { gatherDigest, renderDigest } from './notify/digest';
 import { alerts } from '@aia/db';
-import { digestJob, drainOutbox, outboxJob } from './schedule/jobs';
+import { digestJob, drainOutbox, earningsJob, eventsRefreshJob, outboxJob } from './schedule/jobs';
 import { latestCompletedSession } from './rules/check';
 import { closeCheckJob } from './schedule/jobs';
 import { scheduleDefinitions, TIMEZONE } from './schedule/scheduler';
@@ -44,6 +53,8 @@ const { positionals, values } = parseArgs({
   options: {
     days: { type: 'string' },
     date: { type: 'string' },
+    'as-of': { type: 'string' },
+    'dry-run': { type: 'boolean', default: false },
     minutes: { type: 'string', default: '5' },
     force: { type: 'boolean', default: false },
     send: { type: 'boolean', default: false },
@@ -121,6 +132,55 @@ try {
       console.log(JSON.stringify(res.meta, null, 2));
       break;
     }
+    case 'earnings': {
+      // Uses one of the 2 allowed Alpha Vantage calls today (skips if today already succeeded).
+      const res = await earningsJob(ctx).catch((e: unknown) => {
+        console.error(String(e));
+        return null;
+      });
+      if (res) console.log(JSON.stringify(res.meta, null, 2));
+      break;
+    }
+    case 'morning': {
+      // --dry-run (default): print the email. --send: send it now (a one-off key, so the
+      // scheduled 5:45 AM email still goes out). --as-of: render as of another time.
+      const now = values['as-of'] ? new Date(values['as-of']) : new Date();
+      const msg = renderMorning(await gatherMorning(db, alpaca, now));
+      if (!values.send) {
+        console.log(`Subject: ${msg.subject}\n\n${msg.text}`);
+        break;
+      }
+      await enqueueAlert(db, {
+        dedupeKey: `morning-manual:${new Date().toISOString()}`,
+        kind: 'morning',
+        severity: 'info',
+        channel: 'email',
+        subject: msg.subject,
+        body: msg.text,
+        html: msg.html,
+      });
+      const res = await outboxJob(ctx);
+      console.log(`queued "${msg.subject}"; outbox: ${JSON.stringify(res)}`);
+      break;
+    }
+    case 'levels':
+      await printLevels(ctx, values['as-of'] ? new Date(values['as-of']) : new Date());
+      break;
+    case 'events': {
+      const failed = await eventsRefreshJob(ctx, { forceEcon: values.force });
+      if (failed.length) console.log(`failed: ${failed.join(', ')}`);
+      const rows = await db
+        .select()
+        .from(eventsTable)
+        .where(gte(eventsTable.date, nyDate(new Date())))
+        .orderBy(eventsTable.date, eventsTable.ticker);
+      for (const e of rows) {
+        console.log(
+          `  ${e.date} ${e.ticker.padEnd(6)} ${e.eventType.padEnd(14)} ${e.source.padEnd(12)} ${e.status.padEnd(10)} ${e.estimated ? 'est ' : '    '}${e.title.slice(0, 60)}${e.autoNote ? `  [${e.autoNote}]` : ''}${e.previousDate ? `  (was ${e.previousDate})` : ''}`,
+        );
+      }
+      break;
+    }
     case 'test-email': {
       if (!ctx.mailer) {
         throw new Error(
@@ -173,7 +233,7 @@ try {
       break;
     default:
       console.error(
-        'usage: pnpm collect <calendar|bars|quotes|news|stream|ciks|filings|check|due|health|digest|alerts|test-email|schedule|status> [options]',
+        'usage: pnpm collect <calendar|bars|quotes|news|stream|ciks|filings|earnings|events|levels|morning|check|due|health|digest|alerts|test-email|schedule|status> [options]',
       );
       process.exitCode = 2;
   }

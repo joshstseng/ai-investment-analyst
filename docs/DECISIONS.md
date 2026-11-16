@@ -42,3 +42,13 @@ Decisions made while building Step 1 that later milestones must follow. Newest l
 - Without a verified domain, Resend sends from `onboarding@resend.dev` and only to the Resend account's own email, so `ALERT_EMAIL_TO` must be that address.
 - Each send carries an idempotency key derived from the alert's `dedupe_key`, so a retry after a lost response can't produce a duplicate.
 - Sending never blocks other jobs: alerts are queued, then sent in the background; a send pass stops at its first failure and passes never overlap.
+
+## 2026-11-16: morning email, events and new data sources
+
+- **Morning email** at 5:45 AM PT on weekdays (due-based, once a day, catch-up until noon). Window = previous session's close → now. **Recap mode on the first trading day of the week** (Monday, or Tuesday after a Monday holiday). Holidays get a short "market closed" version.
+- **No calendar-only tickers:** any ticker with seeded events is added to the watchlist, so it gets news, filings and prices too.
+- **Events precedence** (see CLAUDE.md): seed > derived/rule (±3 days); Alpha Vantage > unconfirmed seed estimate (±45 days); a confirmed seeded date keeps Alpha Vantage's date, time and EPS estimate in its note (±3 days).
+- **Alpha Vantage**: ≤ 2 calls per Pacific day (5:00, and 5:30 only if 5:00 failed), counted in `job_runs`; no in-request retries. HEALTH email after 2 failed days in a row, plus one on recovery.
+- **Form 4**: open-market buys/sells (codes P, S) listed per insider and filing (shares, weighted average price, $ value, 10b5-1 flag); all other codes counted.
+- **Pre-market** uses SIP 1-minute bars (15-min delayed on the free plan) up to now − 16 min, IEX as fallback.
+- **Levels to watch**: stop, warning, take-profit, started trailing stop, and the next untriggered ETF drawdown tier within 5% of the last close; crossed levels are "still-active conditions" instead.

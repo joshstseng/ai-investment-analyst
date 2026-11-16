@@ -87,3 +87,34 @@ export const streamMessageSchema = z.discriminatedUnion('T', [
   newsItemSchema.extend({ T: z.literal('n') }),
 ]);
 export type StreamMessage = z.infer<typeof streamMessageSchema>;
+
+/** Corporate actions (v1). Only the fields we use; unknown fields are ignored. */
+const corporateActionBase = {
+  id: z.string(),
+  symbol: z.string(),
+  ex_date: z.string().nullable().optional(),
+  record_date: z.string().nullable().optional(),
+  payable_date: z.string().nullable().optional(),
+  process_date: z.string().nullable().optional(),
+};
+export const cashDividendSchema = z.object({
+  ...corporateActionBase,
+  rate: z.number(),
+  special: z.boolean().optional(),
+  foreign: z.boolean().optional(),
+});
+export const splitSchema = z.object({
+  ...corporateActionBase,
+  new_rate: z.number(),
+  old_rate: z.number(),
+});
+export const corporateActionsPageSchema = z.object({
+  corporate_actions: z.object({
+    cash_dividends: z.array(cashDividendSchema).optional(),
+    forward_splits: z.array(splitSchema).optional(),
+    reverse_splits: z.array(splitSchema).optional(),
+  }),
+  next_page_token: z.string().nullable().optional(),
+});
+export type CashDividend = z.infer<typeof cashDividendSchema>;
+export type Split = z.infer<typeof splitSchema>;

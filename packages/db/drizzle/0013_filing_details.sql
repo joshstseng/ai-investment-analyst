@@ -1,0 +1,1 @@
+ALTER TABLE "filings" ADD COLUMN "details" jsonb;

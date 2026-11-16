@@ -19,6 +19,12 @@ const schema = z.object({
     .regex(/\S+@\S+\.\S+/, 'must include a contact email')
     .optional()
     .or(z.literal('').transform(() => undefined)),
+  /** Alpha Vantage key for the earnings calendar (free plan: 25 requests/day; we use ≤ 2). */
+  ALPHAVANTAGE_API_KEY: z
+    .string()
+    .min(1)
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
   /**
    * Resend API key. When set, email goes out over Resend's HTTPS API (works on Railway, which
    * blocks outbound SMTP on the Hobby plan); otherwise Gmail SMTP below is used.
