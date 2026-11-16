@@ -10,7 +10,16 @@ export function loadDatabaseUrl(): string {
   }
   // Strip quotes pasted around the value (shells and dashboards can keep them literally).
   const raw = process.env.DATABASE_URL?.trim().replace(/^(["'])(.*)\1$/, '$2');
-  return z.string({ error: 'DATABASE_URL is not set' }).url().parse(raw);
+  if (!raw) {
+    throw new Error(
+      'DATABASE_URL is not set or is empty (a shell variable like DATABASE_URL="$X" with an empty $X overrides .env)',
+    );
+  }
+  if (raw.includes('${{')) {
+    throw new Error('DATABASE_URL is a Railway template (${{...}}), not the resolved URL');
+  }
+  // Never echo the value: it contains the password.
+  return z.string().url({ error: 'DATABASE_URL is not a valid URL' }).parse(raw);
 }
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]', 'host.docker.internal']);
