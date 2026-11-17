@@ -271,7 +271,12 @@ describe('buildSeedPlan', () => {
         input({
           ...OVERRIDES,
           holdings: [
-            { account: 'roth_ira', ticker: 'XYZ', needs_confirmation: false, cost_basis_total: total },
+            {
+              account: 'roth_ira',
+              ticker: 'XYZ',
+              needs_confirmation: false,
+              cost_basis_total: total,
+            },
           ],
         }),
       );

@@ -26,7 +26,7 @@ import { requestJson } from '../lib/http';
 import type { JobResult } from '../lib/jobs';
 import { log } from '../lib/log';
 import { loadUniverse } from '../market/universe';
-import { escapeHtml, htmlDoc, ptTime } from '../notify/format';
+import { composeHealthAlert } from '../notify/health-alerts';
 import { enqueueAlert } from '../notify/outbox';
 
 export const EARNINGS_JOB = 'earnings_calendar';
@@ -255,24 +255,28 @@ export async function updateCalendarHealth(db: Db, now = new Date()) {
     now,
   );
 
-  const name = 'Earnings calendar (Alpha Vantage)';
   const send = async (kind: 'failure' | 'recovery', lead: string) => {
-    const subject =
-      kind === 'failure' ? `[AIA] HEALTH ${name}: down` : `[AIA] HEALTH ${name}: recovered`;
-    const text = `${lead}\n\nChecked ${ptTime(now)}.`;
+    const msg = await composeHealthAlert(
+      {
+        feed: EARNINGS_FEED,
+        kind,
+        from: kind === 'failure' ? (prev?.status ?? 'ok') : 'down',
+        to: kind === 'failure' ? 'down' : 'ok',
+        detail,
+      },
+      now,
+      { lead, since: kind === 'recovery' ? (prev?.since ?? null) : null },
+    );
     await enqueueAlert(db, {
       dedupeKey: `health:${EARNINGS_FEED}:${kind}:${laDate(now)}`,
       kind: 'health',
       severity: kind === 'failure' ? 'warn' : 'info',
       channel: 'email',
-      subject,
-      body: text,
-      html: htmlDoc(
-        subject,
-        `<p>${escapeHtml(lead)}</p><p style="color:#555">Checked ${escapeHtml(ptTime(now))}.</p>`,
-      ),
+      subject: msg.subject,
+      body: msg.text,
+      html: msg.html,
     });
-    log.warn(subject);
+    log.warn(msg.subject);
   };
   if (status === 'down' && !wasDown) {
     await send(

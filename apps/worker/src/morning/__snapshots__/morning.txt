@@ -1,0 +1,38 @@
+Tue, Nov 24 · opens 6:30 AM PT · closes 1:00 PM PT
+Overnight alerts: 2 | Filings: 5 | Levels: 1 | Earnings: 2
+
+OVERNIGHT ALERTS
+- Mon 1:20 PM — ETFX: down 15%+ from 52-week high
+- Mon 1:20 PM — CNFX: at warning level (not yet emailed)
+
+ECONOMIC CALENDAR TODAY
+- 5:30 AM [High] Retail Sales m/m — forecast 0.2%, previous 0.8% — released 5:30 AM, see brief
+- 5:30 AM [High] GDP q/q — actual 2.4% (forecast 2.1%, previous 1.8%)
+- 7:00 AM [Medium] Home Sales — forecast 4.1M, previous 4.0M
+
+NEW SEC FILINGS
+- ACMX: 8-K · results (Item 2.02) · Mon 1:06 PM https://www.sec.gov/x1
+- ACMX: Form 4 · open-market sale https://www.sec.gov/x2
+    Jane Q Doe (CFO) sold 5,000 sh @ $51.10 avg ($255,500) · 10b5-1 plan
+- ACMX: Form 4 · 2 insider filings, no open-market buys/sells (grant/award ×2, shares withheld for tax ×1)
+- WTCH: S-3ASR · possible share issuance Mon 2:00 PM · watchlist https://www.sec.gov/x3
+
+PRE-MARKET · AS OF 5:29 AM PT (15-MIN DELAYED)
+  SPY    close $600.00  pre $603.00 +0.50%
+  ETFX   close $85.09  pre $84.57 −0.61%
+  OTCQ   close —  pre no data source
+
+LEVELS TO WATCH
+- ETFX $85.09, 0.1% above its $85.00 15% tier
+
+STILL-ACTIVE CONDITIONS
+- ETFX [placeholder] 3 days active, since Nov 20: ETFX closed at $85.09, 15.2% below its 52-week high
+
+UPCOMING 7 DAYS
+- Tue 11/24 ACMX earnings after close (confirmed): Q3 results [alphavantage]
+- Thu 11/26 BKX earnings after close (estimated): Q3 results — moved from Wed 11/25 [manual]
+
+--
+🩺 All 6 feeds OK
+Covers Mon 1:00 PM → Tue 5:45 AM PT · generated Tue 5:45 AM PT
+AI Investment Analyst · research and alerts only, no trading

@@ -1,0 +1,15 @@
+REVIEW · SPCQ · $4.20 −5.4% today
+Spec Quantum Inc · Roth IRA
+
+New 52-week closing low
+SPCQ closed at $4.20, a new 52-week closing low (previous low $4.50). A further 2%+ move since the last alert ($4.35 → $4.20).
+Range: low $4.20 … cost $8.00 (price at 0%)
+
+Position: Position 50 sh @ $8.00 · Value $210 · P/L −$190 · −47.5%
+
+Plan: Review the position. This is a PLACEHOLDER rule, so there's no confirmed exit plan yet. No exit rules are confirmed for SPCQ; consider writing one.
+
+--
+Rule: new_52w_low · PLACEHOLDER · risk stop
+As of the Mon, Nov 16 close · sent Mon, Nov 16, 1:20 PM PST
+AI Investment Analyst · research and alerts only, no trading

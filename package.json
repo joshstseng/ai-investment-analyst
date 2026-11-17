@@ -19,7 +19,8 @@
     "db:migrate": "pnpm --filter @aia/db db:migrate",
     "seed": "pnpm --filter @aia/db seed",
     "collect": "pnpm --filter @aia/worker collect",
-    "worker": "pnpm --filter @aia/worker start"
+    "worker": "pnpm --filter @aia/worker start",
+    "email:preview": "pnpm --filter @aia/emails preview"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

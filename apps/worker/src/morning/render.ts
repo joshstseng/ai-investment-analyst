@@ -1,24 +1,27 @@
 /**
- * Morning email rendering (pure): subject, mobile-friendly HTML and a plain-text fallback.
- * Sections follow a fixed order; empty sections are skipped, except alerts ("none").
- * All times are shown in Pacific time.
+ * Morning email view model (pure): MorningData → MorningEmailProps (subject, inbox preview, header
+ * with today's session, KPI tiles, then the sections in their fixed order). Empty sections are
+ * skipped, except alerts ("None."). Times are shown in Pacific time. Rendering is in @aia/emails.
  */
-import { FORM4_CODES } from '@aia/core';
-import { escapeHtml, money, signedPct } from '../notify/format';
+import { addDays, filingTitle, FORM4_CODES } from '@aia/core';
+import {
+  money,
+  renderMorningEmail,
+  signedPct,
+  type FilingItem,
+  type KpiTile,
+  type MorningEmailProps,
+  type PillTone,
+  type Severity,
+} from '@aia/emails';
+import { headlinesProps, levelPhrase, tradeLine } from '../notify/digest-email';
 import type { MorningData } from './gather';
 
 const TZ = 'America/Los_Angeles';
 const time = (d: Date) =>
   d.toLocaleString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' });
 const dayTime = (d: Date) =>
-  d.toLocaleString('en-US', {
-    timeZone: TZ,
-    weekday: 'short',
-    month: 'numeric',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  `${d.toLocaleString('en-US', { timeZone: TZ, weekday: 'short' })} ${time(d)}`;
 const dayOfDate = (isoDate: string) =>
   new Date(`${isoDate}T12:00:00Z`).toLocaleDateString('en-US', {
     timeZone: 'UTC',
@@ -34,14 +37,8 @@ const shortDay = (isoDate: string) =>
     day: 'numeric',
   });
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
-const compactUsd = (n: number) =>
-  n >= 1e9
-    ? `$${(n / 1e9).toFixed(2)}B`
-    : n >= 1e6
-      ? `$${(n / 1e6).toFixed(1)}M`
-      : n >= 1e3
-        ? `$${(n / 1e3).toFixed(1)}K`
-        : `$${n.toFixed(0)}`;
+const price = (n: number | null) => (n === null ? '—' : money(n, n < 1 ? 4 : 2));
+
 const TIME_OF_DAY: Record<string, string> = {
   before_open: 'before open',
   after_close: 'after close',
@@ -58,13 +55,14 @@ const EVENT_LABEL: Record<string, string> = {
   reminder: 'reminder',
   other: 'event',
 };
-const SOURCE_LABEL: Record<string, string> = {
-  seed: 'your notes',
-  alphavantage: 'Alpha Vantage',
-  alpaca: 'Alpaca',
-  rule: 'your rule',
-  derived: 'derived',
-  ai_extracted: 'AI-extracted',
+/** Source pills on upcoming events. */
+const SOURCE_PILL: Record<string, { label: string; tone: PillTone }> = {
+  seed: { label: 'manual', tone: 'neutral' },
+  alphavantage: { label: 'alphavantage', tone: 'gain' },
+  alpaca: { label: 'alpaca', tone: 'gain' },
+  rule: { label: 'rule', tone: 'neutral' },
+  derived: { label: 'derived', tone: 'neutral' },
+  ai_extracted: { label: 'ai', tone: 'escalated' },
 };
 const FEED_LABEL: Record<string, string> = {
   alpaca_news_stream: 'news stream',
@@ -74,297 +72,296 @@ const FEED_LABEL: Record<string, string> = {
   scheduler: 'scheduler',
   alphavantage_calendar: 'earnings calendar',
 };
+const TAG_SEVERITY: Record<string, Severity> = {
+  ACTION: 'action',
+  WARNING: 'warning',
+  REVIEW: 'review',
+  REMINDER: 'reminder',
+};
 
-export function morningSubject(d: MorningData): string {
-  const day = dayOfDate(d.window.today);
-  if (d.window.closed) return `[AIA] MORNING ${day}: market closed`;
-  if (d.window.recap) return `[AIA] MORNING ${day}: weekend recap + week ahead`;
-  const filings = d.filings.reduce(
+const filingCount = (d: MorningData) =>
+  d.filings.reduce(
     (a, f) => a + f.items.length + f.insiderTrades.length + f.otherInsiderFilings,
     0,
   );
-  return `[AIA] MORNING ${day}: ${plural(d.alerts.length, 'alert')}, ${plural(filings, 'filing')}, ${plural(d.levels.length, 'level')} to watch`;
-}
 
-interface Out {
-  text: string[];
-  html: string[];
-}
-
-function section(o: Out, title: string) {
-  o.text.push('', title.toUpperCase());
-  o.html.push(
-    `<h3 style="font-size:16px;margin:22px 0 6px;padding-bottom:3px;border-bottom:1px solid #ddd">${escapeHtml(title)}</h3>`,
+/** Earnings on the calendar from today through the next 6 days. */
+const earningsThisWeek = (d: MorningData) =>
+  d.upcoming.items.filter(
+    (e) =>
+      e.eventType === 'earnings' && e.date >= d.window.today && e.date < addDays(d.window.today, 7),
   );
-}
-function line(o: Out, text: string, html = escapeHtml(text)) {
-  o.text.push(`- ${text}`);
-  o.html.push(`<div style="margin:3px 0">${html}</div>`);
-}
-const link = (href: string | null, label: string) =>
-  href
-    ? `<a href="${escapeHtml(href)}" style="color:#0b57d0">${escapeHtml(label)}</a>`
-    : escapeHtml(label);
-const muted = (s: string) => `<span style="color:#666">${escapeHtml(s)}</span>`;
 
-export function renderMorning(d: MorningData) {
+/**
+ * "☀️ [AIA] MORNING Tue, Nov 17 · 2 alerts · 3 filings · 1 level";
+ * recap "🗓️ [AIA] MORNING Mon, Nov 23 · weekend recap + week ahead"; holiday "· market closed".
+ */
+export function morningSubject(d: MorningData): string {
+  const day = dayOfDate(d.window.today);
+  if (d.window.closed) return `☀️ [AIA] MORNING ${day} · market closed`;
+  if (d.window.recap) return `🗓️ [AIA] MORNING ${day} · weekend recap + week ahead`;
+  return `☀️ [AIA] MORNING ${day} · ${plural(d.alerts.length, 'alert')} · ${plural(filingCount(d), 'filing')} · ${plural(d.levels.length, 'level')}`;
+}
+
+/** Inbox preview: alerts, the first high-impact release, today's earnings, the nearest level. */
+export function morningPreviewText(d: MorningData): string {
   const w = d.window;
-  const o: Out = { text: [], html: [] };
-  const subject = morningSubject(d);
-
-  // 1. Today
-  section(o, 'Today');
   if (w.closed) {
-    const next = w.next
-      ? `Next session ${dayOfDate(w.next.date)}, opens ${time(w.next.openAt)} PT.`
-      : '';
-    line(o, `Market closed today. ${next}`.trim());
-  } else {
-    const early = w.session!.earlyClose
-      ? ` EARLY CLOSE ${time(w.session!.closeAt)} PT.`
-      : ` Closes ${time(w.session!.closeAt)} PT.`;
-    line(
-      o,
-      `Market open today: opens ${time(w.session!.openAt)} PT.${early}`,
-      `Market open today: opens <b>${time(w.session!.openAt)} PT</b>.${w.session!.earlyClose ? ` <b style="color:#b3261e">Early close ${time(w.session!.closeAt)} PT.</b>` : ` Closes ${time(w.session!.closeAt)} PT.`}`,
+    return `Market closed${w.next ? ` · next session ${dayOfDate(w.next.date)}` : ''}`;
+  }
+  const parts: string[] = [];
+  if (d.alerts.length) parts.push(`${plural(d.alerts.length, 'alert')} overnight`);
+  const high = d.econ.items
+    .filter((e) => e.impact === 'High' && !e.allDay && e.at >= d.generatedAt)
+    .sort((a, b) => a.at.getTime() - b.at.getTime())[0];
+  if (high && !w.recap) parts.push(`${high.title} ${time(high.at)}`);
+  const todayEarnings = d.upcoming.items.filter(
+    (e) => e.eventType === 'earnings' && e.date === w.today,
+  );
+  for (const e of todayEarnings.slice(0, 2)) {
+    parts.push(
+      `${e.ticker} earnings${TIME_OF_DAY[e.timeOfDay] ? ` ${TIME_OF_DAY[e.timeOfDay]}` : ''}`,
     );
   }
-  line(
-    o,
-    `Covers ${dayTime(w.start)} → ${dayTime(w.end)} PT${w.recap ? ' (weekend recap)' : ''}.`,
-    muted(`Covers ${dayTime(w.start)} → ${dayTime(w.end)} PT${w.recap ? ' (weekend recap)' : ''}.`),
-  );
-
-  // 2. Overnight alerts (always shown)
-  section(o, w.recap ? 'Alerts since Friday' : 'Overnight alerts');
-  if (d.alerts.length === 0) line(o, 'none');
-  for (const a of d.alerts) {
-    const t = `${dayTime(a.createdAt)} — ${a.subject.replace(/^\[AIA\] /, '')}${a.sent ? '' : ' (not yet emailed)'}`;
-    line(o, t);
+  const lvl = d.levels[0];
+  if (lvl && parts.length < 4) {
+    parts.push(
+      `${lvl.display} ${lvl.distancePct.toFixed(1)}% ${lvl.direction === 'down' ? 'above' : 'below'} ${lvl.kind === 'drawdown_tier' ? lvl.label.replace(' drawdown tier', ' tier') : lvl.label}`,
+    );
   }
+  if (w.recap) parts.unshift('Weekend recap + week ahead');
+  return parts.slice(0, 4).join(' · ') || 'Quiet morning: no alerts, filings or levels to watch';
+}
 
-  if (!w.closed) {
-    // 3. Economic calendar
-    if (!d.econ.available) {
-      section(o, w.recap ? 'Economic calendar this week' : 'Economic calendar today');
-      line(o, 'unavailable (calendar feed not fetched today)');
-    } else if (d.econ.items.length) {
-      section(o, w.recap ? 'Economic calendar this week' : 'Economic calendar today');
-      const rank = (i: string) => (i === 'High' ? 0 : 1);
-      const items = [...d.econ.items].sort((a, b) =>
-        w.recap
-          ? a.at.getTime() - b.at.getTime() || rank(a.impact) - rank(b.impact)
-          : rank(a.impact) - rank(b.impact) || a.at.getTime() - b.at.getTime(),
-      );
-      for (const e of items) {
-        const when = e.allDay
-          ? `${w.recap ? `${shortDay(e.at.toISOString().slice(0, 10))} ` : ''}all day`
+function kpis(d: MorningData): KpiTile[] {
+  const earnings = earningsThisWeek(d);
+  const earnings8k = d.filings
+    .flatMap((g) => g.items)
+    .filter((f) => filingTitle(f.form, f.items).earnings).length;
+  return [
+    {
+      label: d.window.recap ? 'Alerts since Fri' : 'Overnight alerts',
+      value: String(d.alerts.length),
+      sub: d.alerts.length
+        ? d.alerts.some((a) => !a.sent)
+          ? 'some not yet emailed'
+          : 'all emailed'
+        : 'none',
+    },
+    {
+      label: 'Filings',
+      value: String(filingCount(d)),
+      sub: earnings8k ? `${earnings8k} earnings 8-K` : 'since the close',
+    },
+    { label: 'Levels', value: String(d.levels.length), sub: 'to watch' },
+    {
+      label: 'Earnings',
+      value: String(earnings.length),
+      sub: earnings.length
+        ? earnings
+            .slice(0, 2)
+            .map((e) => `${e.ticker} ${shortDay(e.date).split(',')[0]}`)
+            .join(', ')
+        : 'this week',
+    },
+  ];
+}
+
+function filingItems(d: MorningData): FilingItem[] {
+  const out: FilingItem[] = [];
+  for (const g of d.filings) {
+    const wl = g.held ? '' : ' · watchlist';
+    for (const f of g.items) {
+      const t = filingTitle(f.form, f.items);
+      out.push({
+        tickers: [g.ticker],
+        title: t.title,
+        href: f.url,
+        strong: t.notable || t.dilution,
+        detail:
+          [t.itemsNote ? `(${t.itemsNote})` : null, dayTime(f.filedAt)]
+            .filter(Boolean)
+            .join(' · ') + wl,
+      });
+    }
+    for (const tr of g.insiderTrades) {
+      out.push({
+        tickers: [g.ticker],
+        title: `Form 4 · open-market ${tr.code === 'P' ? 'buy' : 'sale'}`,
+        href: tr.url,
+        strong: true,
+        detail: wl ? wl.slice(3) : undefined,
+        lines: [tradeLine(tr)],
+      });
+    }
+    const activity = Object.entries(g.otherCodes)
+      .sort((x, y) => y[1] - x[1])
+      .map(([code, n]) => `${FORM4_CODES[code] ?? `code ${code}`} ×${n}`)
+      .join(', ');
+    if (g.otherInsiderFilings) {
+      out.push({
+        tickers: [g.ticker],
+        title: `Form 4 · ${plural(g.otherInsiderFilings, 'insider filing')}, no open-market buys/sells`,
+        detail: (activity ? `(${activity})` : '') + wl || undefined,
+      });
+    }
+  }
+  return out;
+}
+
+export function morningEmailProps(d: MorningData): MorningEmailProps {
+  const w = d.window;
+  const day = dayOfDate(w.today);
+  const subtitle = w.closed
+    ? `${day} · market closed${w.next ? ` · next session ${dayOfDate(w.next.date)}, opens ${time(w.next.openAt)} PT` : ''}`
+    : `${day} · opens ${time(w.session!.openAt)} PT · ${w.session!.earlyClose ? `EARLY CLOSE ${time(w.session!.closeAt)} PT` : `closes ${time(w.session!.closeAt)} PT`}`;
+
+  const alerts: MorningEmailProps['alerts'] = {
+    title: w.recap ? 'Alerts since Friday' : 'Overnight alerts',
+    items: d.alerts.map((a) => {
+      const tag = /\[AIA\] (ACTION|WARNING|REVIEW|REMINDER)\b/.exec(a.subject)?.[1];
+      return {
+        time: dayTime(a.createdAt),
+        severity: tag ? TAG_SEVERITY[tag]! : null,
+        text: a.subject.replace(/^.*?\[AIA\] (?:ACTION|WARNING|REVIEW|REMINDER|HEALTH) /, ''),
+        pending: !a.sent,
+      };
+    }),
+  };
+
+  let econ: MorningEmailProps['econ'] = null;
+  if (!w.closed && (!d.econ.available || d.econ.items.length)) {
+    const rank = (i: string) => (i === 'High' ? 0 : 1);
+    const items = [...d.econ.items].sort((a, b) =>
+      w.recap
+        ? a.at.getTime() - b.at.getTime() || rank(a.impact) - rank(b.impact)
+        : rank(a.impact) - rank(b.impact) || a.at.getTime() - b.at.getTime(),
+    );
+    econ = {
+      title: w.recap ? 'Economic calendar this week' : 'Economic calendar today',
+      available: d.econ.available,
+      rows: items.map((e) => ({
+        time: e.allDay
+          ? `${w.recap ? `${shortDay(e.at.toISOString().slice(0, 10)).split(',')[0]} ` : ''}all day`
           : w.recap
             ? dayTime(e.at)
-            : time(e.at);
-        const nums = e.actual
-          ? `actual ${e.actual} (forecast ${e.forecast ?? '—'}, previous ${e.previous ?? '—'})`
-          : [e.forecast && `forecast ${e.forecast}`, e.previous && `previous ${e.previous}`]
-              .filter(Boolean)
-              .join(', ');
-        const released =
+            : time(e.at),
+        event: e.title,
+        impact: e.impact,
+        forecast: e.forecast,
+        previous: e.previous,
+        actual: e.actual,
+        // Never invent an actual: if it's out but the feed hasn't got it, say so.
+        status:
           !e.actual && !e.allDay && e.at <= d.generatedAt
-            ? ` — released ${time(e.at)}, see brief`
-            : '';
-        const t = `${when} [${e.impact}] ${e.title}${nums ? ` — ${nums}` : ''}${released}`;
-        line(
-          o,
-          t,
-          `${escapeHtml(when)} <b style="color:${e.impact === 'High' ? '#b3261e' : '#8a5a00'}">${e.impact}</b> ${escapeHtml(e.title)}${nums ? ` ${muted(`— ${nums}`)}` : ''}${released ? muted(released) : ''}`,
-        );
-      }
-    }
+            ? `released ${time(e.at)}, see brief`
+            : null,
+      })),
+    };
+  }
 
-    // 4. Filings
-    if (d.filings.length) {
-      section(o, 'New SEC filings');
-      for (const g of d.filings) {
-        const who = `${g.ticker}${g.held ? '' : ' (watchlist)'}`;
-        for (const f of g.items) {
-          line(
-            o,
-            `${who}: ${f.label} (${dayTime(f.filedAt)}) ${f.url}`,
-            `<b>${escapeHtml(who)}</b> ${link(f.url, f.label)}${f.dilution ? ' ⚠' : ''} ${muted(dayTime(f.filedAt))}`,
-          );
-        }
-        for (const t of g.insiderTrades) {
-          const verb = t.code === 'P' ? 'bought' : 'sold';
-          const px =
-            t.avgPrice !== null
-              ? ` @ ${t.lots > 1 ? 'avg ' : ''}${money(t.avgPrice)} = ${compactUsd(t.value)}`
-              : '';
-          const when = t.firstDate
-            ? ` on ${shortDay(t.firstDate)}${t.lastDate && t.lastDate !== t.firstDate ? `–${shortDay(t.lastDate)}` : ''}`
-            : '';
-          const s = `${who}: Form 4 — ${t.owner}${t.role ? ` (${t.role})` : ''} ${verb} ${t.shares.toLocaleString('en-US')} sh${px}${when}${t.plan10b51 ? ' (10b5-1 plan)' : ''}`;
-          line(
-            o,
-            `${s} ${t.url}`,
-            `<b>${escapeHtml(who)}</b> ${link(t.url, 'Form 4')} — ${escapeHtml(s.split(' — ')[1]!)}`,
-          );
-        }
-        const activity = Object.entries(g.otherCodes)
-          .sort((x, y) => y[1] - x[1])
-          .map(([code, n]) => `${n} ${FORM4_CODES[code] ?? `code ${code}`}`)
-          .join(', ');
-        if (g.otherInsiderFilings || activity) {
-          const filingsPart = g.otherInsiderFilings
-            ? `${plural(g.otherInsiderFilings, 'other insider filing')}`
-            : 'other insider activity';
-          const s = `${who}: ${filingsPart}${activity ? ` (${activity})` : ''}`;
-          line(o, s, `<b>${escapeHtml(who)}</b> ${muted(s.slice(who.length + 2))}`);
-        }
-      }
-    }
-
-    // 5. Headlines
-    if (d.headlines.length) {
-      section(o, 'Headlines');
-      for (const g of d.headlines) {
-        o.text.push(`${g.ticker}${g.held ? '' : ' (watchlist)'}:`);
-        o.html.push(
-          `<div style="margin:10px 0 2px"><b>${escapeHtml(g.ticker)}</b>${g.held ? '' : ' ' + muted('(watchlist)')}</div>`,
-        );
-        for (const n of g.items) {
-          const also = n.also.length ? ` (also: ${n.also.join(', ')})` : '';
-          o.text.push(
-            `  - ${n.headline} (${n.source}, ${dayTime(n.publishedAt)})${also} ${n.url ?? ''}`.trimEnd(),
-          );
-          o.html.push(
-            `<div style="margin:2px 0 2px 12px">${link(n.url, n.headline)} ${muted(`${n.source} · ${dayTime(n.publishedAt)}${also}`)}</div>`,
-          );
-        }
-        if (g.more) {
-          o.text.push(`  (+${g.more} more)`);
-          o.html.push(`<div style="margin:2px 0 2px 12px">${muted(`+${g.more} more`)}</div>`);
-        }
-      }
-    }
-
-    // 6. Pre-market
-    if (d.premarket.quotes.length) {
-      const asOf = d.premarket.asOf
-        ? `, as of ${time(d.premarket.asOf)} PT${d.premarket.feed === 'sip' ? ' (15-min delayed)' : ''}`
-        : '';
-      section(o, `Pre-market${asOf}`);
-      if (!d.premarket.available) line(o, 'pre-market unavailable on free feed; last close shown');
-      if (d.premarket.note && d.premarket.available) line(o, d.premarket.note);
-      o.html.push('<table cellpadding="3" style="border-collapse:collapse;font-size:14px">');
-      for (const q of d.premarket.quotes) {
-        const pre =
+  let premarket: MorningEmailProps['premarket'] = null;
+  if (!w.closed && d.premarket.quotes.length) {
+    const asOf = d.premarket.asOf
+      ? ` · as of ${time(d.premarket.asOf)} PT${d.premarket.feed === 'sip' ? ' (15-min delayed)' : ''}`
+      : '';
+    premarket = {
+      title: `Pre-market${asOf}`,
+      note: !d.premarket.available
+        ? 'Pre-market unavailable on the free feed; last close shown.'
+        : d.premarket.note,
+      rows: d.premarket.quotes.map((q) => ({
+        symbol: q.symbol,
+        close: price(q.lastClose),
+        pre:
           q.price === null
             ? q.lastClose === null
               ? 'no data source'
               : 'no pre-market trades'
-            : `${money(q.price)} ${signedPct(q.changePct, 2)}`;
-        o.text.push(`  ${q.symbol.padEnd(6)} close ${money(q.lastClose)}  pre ${pre}`);
-        const color = q.changePct === null ? '#666' : q.changePct < 0 ? '#b3261e' : '#137333';
-        o.html.push(
-          `<tr><td><b>${escapeHtml(q.symbol)}</b></td><td style="color:#666">${money(q.lastClose)}</td><td style="color:${color}">${escapeHtml(pre)}</td></tr>`,
-        );
-      }
-      o.html.push('</table>');
-    }
-
-    // 7. Levels to watch
-    if (d.levels.length) {
-      section(o, 'Levels to watch (within 5%)');
-      for (const l of d.levels) {
-        const side = l.direction === 'down' ? 'above' : 'below';
-        // Always 2 decimals for the $ distance (money() uses 4 below $1, e.g. "$0.1200").
-        const dollars = `$${l.distanceDollars.toFixed(2)}`;
-        const t = `${l.display}: ${l.label} ${money(l.level)} — ${l.distancePct.toFixed(2)}% / ${dollars} ${side} (close ${money(l.close)})${l.status === 'CONFIRMED' ? '' : ` [${l.status.toLowerCase()}]`}`;
-        line(
-          o,
-          t,
-          `<b>${escapeHtml(l.display)}</b> ${escapeHtml(l.label)} ${money(l.level)} — <b>${l.distancePct.toFixed(2)}%</b> / ${dollars} ${side} ${muted(`(close ${money(l.close)})${l.status === 'CONFIRMED' ? '' : ` [${l.status.toLowerCase()}]`}`)}`,
-        );
-      }
-    }
-
-    // 8. Still-active conditions
-    if (d.active.length) {
-      section(o, 'Still-active conditions');
-      for (const a of d.active) {
-        const t = `${a.display} [${a.status.toLowerCase()}] ${plural(a.daysActive, 'day')} active (since ${shortDay(a.firstFiredOn)}): ${a.message}`;
-        line(
-          o,
-          t,
-          `<b>${escapeHtml(a.display)}</b> ${muted(`[${a.status.toLowerCase()}] ${plural(a.daysActive, 'day')} active`)}: ${escapeHtml(a.message)}`,
-        );
-      }
-    }
+            : `${price(q.price)} ${q.changePct === null ? '' : signedPct(q.changePct, 2)}`.trim(),
+        changePct: q.price === null ? null : q.changePct,
+      })),
+    };
   }
 
-  // 9. Upcoming
-  const upcomingTitle = w.recap ? 'This week (+ earnings, next 3 weeks)' : 'Upcoming 7 days';
-  if (d.upcoming.items.length || !d.upcoming.available.earnings) {
-    section(o, upcomingTitle);
-    if (!d.upcoming.available.earnings) {
-      line(
-        o,
-        `earnings calendar unavailable today${d.upcoming.available.lastFetched ? ` (last updated ${d.upcoming.available.lastFetched})` : ''}`,
-      );
-    }
-    for (const e of d.upcoming.items) {
-      const tod = TIME_OF_DAY[e.timeOfDay] ? ` ${TIME_OF_DAY[e.timeOfDay]}` : '';
-      const state =
-        e.eventType === 'earnings' || e.eventType === 'lockup_expiry' || e.eventType === 'guidance'
-          ? e.estimated
-            ? ' (estimated)'
-            : ' (confirmed)'
-          : '';
-      const moved = e.previousDate ? ` — moved from ${shortDay(e.previousDate)}` : '';
-      const note = e.note ? ` — ${e.note}` : '';
-      const t = `${shortDay(e.date)} ${e.ticker} ${EVENT_LABEL[e.eventType] ?? e.eventType}${tod}${state}: ${e.title}${moved}${note} [${SOURCE_LABEL[e.source] ?? e.source}]`;
-      line(
-        o,
-        t,
-        `<b>${escapeHtml(shortDay(e.date))} ${escapeHtml(e.ticker)}</b> ${escapeHtml(`${EVENT_LABEL[e.eventType] ?? e.eventType}${tod}${state}`)}: ${escapeHtml(e.title)}${moved ? ` <b style="color:#b3261e">${escapeHtml(moved)}</b>` : ''}${note ? muted(note) : ''} ${muted(`[${SOURCE_LABEL[e.source] ?? e.source}]`)}`,
-      );
-    }
-  }
+  const upcoming: MorningEmailProps['upcoming'] =
+    d.upcoming.items.length || !d.upcoming.available.earnings
+      ? {
+          title: w.recap ? 'This week (+ earnings, next 3 weeks)' : 'Upcoming 7 days',
+          note: d.upcoming.available.earnings
+            ? null
+            : `Earnings calendar unavailable today${d.upcoming.available.lastFetched ? ` (last updated ${d.upcoming.available.lastFetched})` : ''}.`,
+          items: d.upcoming.items.map((e) => {
+            const tod = TIME_OF_DAY[e.timeOfDay] ? ` ${TIME_OF_DAY[e.timeOfDay]}` : '';
+            const state = ['earnings', 'lockup_expiry', 'guidance'].includes(e.eventType)
+              ? e.estimated
+                ? ' (estimated)'
+                : ' (confirmed)'
+              : '';
+            const src = SOURCE_PILL[e.source] ?? { label: e.source, tone: 'neutral' as const };
+            return {
+              date: shortDay(e.date).replace(',', ''),
+              ticker: e.ticker,
+              what: `${EVENT_LABEL[e.eventType] ?? e.eventType}${tod}${state}`,
+              title: e.title,
+              moved: e.previousDate
+                ? `moved from ${shortDay(e.previousDate).replace(',', '')}`
+                : null,
+              note: e.note,
+              source: src.label,
+              sourceTone: src.tone,
+            };
+          }),
+        }
+      : null;
 
-  // 10. Recap only
-  if (w.recap && d.lastWeek) {
-    section(o, 'Last week');
-    for (const r of d.lastWeek) {
-      line(
-        o,
-        `${r.symbol}: ${signedPct(r.changePct)}`,
-        `<b>${escapeHtml(r.symbol)}</b> <span style="color:${(r.changePct ?? 0) < 0 ? '#b3261e' : '#137333'}">${signedPct(r.changePct)}</span>`,
-      );
-    }
-    if (d.pastWeekAlerts?.length) {
-      o.text.push('', 'Alerts last week:');
-      o.html.push(`<div style="margin:10px 0 2px"><b>Alerts last week</b></div>`);
-      for (const a of d.pastWeekAlerts)
-        line(o, `${dayTime(a.createdAt)} — ${a.subject.replace(/^\[AIA\] /, '')}`);
-    }
-  }
+  const health = d.health.issues.length
+    ? `🩺 ${plural(d.health.issues.length, 'feed issue')}: ${d.health.issues.map((i) => `${FEED_LABEL[i.feed] ?? i.feed} ${i.status}${i.detail ? ` (${i.detail})` : ''}`).join('; ')}`
+    : `🩺 All ${d.health.ok} feeds OK`;
 
-  // 11. Feed health
-  section(o, 'Feed health');
-  if (d.health.issues.length === 0) {
-    line(o, `All ${d.health.ok} feeds OK.`);
-  } else {
-    line(
-      o,
-      `${plural(d.health.issues.length, 'issue')}: ${d.health.issues.map((i) => `${FEED_LABEL[i.feed] ?? i.feed} ${i.status}${i.detail ? ` (${i.detail})` : ''}`).join('; ')}`,
-    );
-  }
+  return {
+    subject: morningSubject(d),
+    preview: morningPreviewText(d),
+    title: w.closed
+      ? '☀️ Market Closed'
+      : w.recap
+        ? '🗓️ Weekend Recap + Week Ahead'
+        : '☀️ Morning Brief',
+    subtitle,
+    kpis: kpis(d),
+    alerts,
+    econ,
+    filings: w.closed ? [] : filingItems(d),
+    headlines: w.closed ? null : headlinesProps(d.headlines),
+    premarket,
+    levels: w.closed ? [] : d.levels.map(levelPhrase),
+    active: w.closed
+      ? []
+      : d.active.map((a) => ({
+          ticker: a.display,
+          status: a.status.toLowerCase(),
+          since: `${plural(a.daysActive, 'day')} active, since ${dayOfDate(a.firstFiredOn).split(', ')[1]}`,
+          message: a.message,
+        })),
+    upcoming,
+    lastWeek:
+      w.recap && d.lastWeek
+        ? {
+            rows: d.lastWeek.map((r) => ({ symbol: r.symbol, changePct: r.changePct })),
+            alerts: (d.pastWeekAlerts ?? []).map(
+              (a) => `${dayTime(a.createdAt)} — ${a.subject.replace(/^.*?\[AIA\] /, '')}`,
+            ),
+          }
+        : null,
+    footer: [
+      health,
+      `Covers ${dayTime(w.start)} → ${dayTime(w.end)} PT${w.recap ? ' (weekend recap)' : ''} · generated ${dayTime(d.generatedAt)} PT`,
+    ],
+  };
+}
 
-  o.text.push('', `Generated ${dayTime(d.generatedAt)} PT. Research and alerts only, no trading.`);
-  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(subject)}</title></head>
-<body style="margin:0;padding:12px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.45;color:#1a1a1a">
-<div style="max-width:640px;margin:0 auto">
-${o.html.join('\n')}
-<p style="color:#777;font-size:12px;margin-top:24px">Generated ${escapeHtml(dayTime(d.generatedAt))} PT. Research and alerts only, no trading.</p>
-</div></body></html>`;
-  return { subject, text: o.text.join('\n').trimStart(), html };
+/** Subject, HTML and plain text for the morning email. */
+export async function renderMorning(d: MorningData) {
+  const props = morningEmailProps(d);
+  return { props, ...(await renderMorningEmail(props)) };
 }

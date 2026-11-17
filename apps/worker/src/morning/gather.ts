@@ -1,5 +1,13 @@
 /** Gathers everything the morning email shows. Rendering is separate and pure (render.ts). */
-import { addDays, describeFiling, laDate, weekStart, type LevelToWatch } from '@aia/core';
+import {
+  addDays,
+  describeFiling,
+  laDate,
+  selectHeadlines,
+  weekStart,
+  type HeadlineSelection,
+  type LevelToWatch,
+} from '@aia/core';
 import {
   alerts,
   alertStates,
@@ -48,25 +56,22 @@ export interface MorningData {
   filings: {
     ticker: string;
     held: boolean;
-    items: { form: string; label: string; dilution: boolean; filedAt: Date; url: string }[];
+    items: {
+      form: string;
+      /** 8-K item numbers, e.g. ["2.02", "9.01"]. */
+      items: string[];
+      label: string;
+      dilution: boolean;
+      filedAt: Date;
+      url: string;
+    }[];
     insiderTrades: (TradeSummary & { url: string })[];
     otherInsiderFilings: number;
     /** Other Form 4 activity across the window, by transaction code (e.g. { A: 4, F: 2 }). */
     otherCodes: Record<string, number>;
   }[];
-  headlines: {
-    ticker: string;
-    held: boolean;
-    items: {
-      headline: string;
-      source: string;
-      url: string | null;
-      publishedAt: Date;
-      /** Other followed tickers the headline mentions (it is listed only once). */
-      also: string[];
-    }[];
-    more: number;
-  }[];
+  /** Each story once with all its tickers; noise filtered (same rules as the digest). */
+  headlines: HeadlineSelection;
   premarket: {
     available: boolean;
     feed: string | null;
@@ -103,14 +108,10 @@ export interface MorningData {
   health: { ok: number; issues: { feed: string; status: string; detail: string | null }[] };
 }
 
-const HEADLINES = { normal: 5, recap: 8 };
+/** Holding stories shown (then "+ n more"). */
+const HEADLINES = { normal: 6, recap: 10 };
 const UPCOMING_DAYS = 7;
 const RECAP_EARNINGS_DAYS = 21;
-
-function sourceName(source: string): string {
-  const s = source.replace(/^alpaca:/, '');
-  return s === 'benzinga' ? 'Benzinga' : s;
-}
 
 export async function gatherMorning(
   db: Db,
@@ -226,6 +227,7 @@ export async function gatherMorning(
         .filter((f) => f.form !== '4' && f.form !== '4/A')
         .map((f) => ({
           form: f.form,
+          items: f.items,
           ...describeFiling(f.form, f.items),
           filedAt: f.filedAt,
           url: f.url,
@@ -241,7 +243,7 @@ export async function gatherMorning(
   });
 
   // 5. Headlines in the window, newest first, per ticker.
-  const perTicker = w.recap ? HEADLINES.recap : HEADLINES.normal;
+  const perTicker = w.recap ? HEADLINES.recap : HEADLINES.normal; // stories in total
   const newsRows = await db
     .select({
       headline: newsItems.headline,
@@ -253,31 +255,11 @@ export async function gatherMorning(
     .from(newsItems)
     .where(and(gt(newsItems.publishedAt, w.start), lte(newsItems.publishedAt, w.end)))
     .orderBy(desc(newsItems.publishedAt));
-  // Each headline appears once, under the first followed ticker it mentions (holdings first),
-  // with the other followed tickers noted; market roundups would otherwise repeat everywhere.
-  const followedSet = new Set(followed);
-  const seen = new Set<string>();
-  const headlines: MorningData['headlines'] = [];
-  for (const ticker of [...followed].sort(order)) {
-    const fresh = newsRows.filter(
-      (n) => n.symbols.includes(ticker) && !seen.has(n.url ?? n.headline),
-    );
-    if (!fresh.length) continue;
-    const shown = fresh.slice(0, perTicker);
-    for (const n of shown) seen.add(n.url ?? n.headline);
-    headlines.push({
-      ticker,
-      held: heldTickers.has(ticker),
-      items: shown.map((n) => ({
-        headline: n.headline,
-        source: sourceName(n.source),
-        url: n.url,
-        publishedAt: n.publishedAt,
-        also: n.symbols.filter((x) => x !== ticker && followedSet.has(x)),
-      })),
-      more: fresh.length - shown.length,
-    });
-  }
+  const headlines = selectHeadlines(newsRows, {
+    holdings: [...heldTickers].sort(),
+    watchlist: followed.filter((t) => !heldTickers.has(t)),
+    max: perTicker,
+  });
 
   // 6. Pre-market (SPY, QQQ and holdings) — only on trading days.
   const lastSession = w.prev?.date ?? today;

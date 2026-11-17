@@ -1,8 +1,9 @@
+import { MAX_HTML_BYTES } from '@aia/emails';
 import { describe, expect, it } from 'vitest';
 import { calendarRow } from '../market/calendar';
 import type { CalSession } from '../schedule/market';
 import type { MorningData } from './gather';
-import { morningSubject, renderMorning } from './render';
+import { morningEmailProps, morningPreviewText, morningSubject, renderMorning } from './render';
 import { morningDueDate, morningWindow } from './window';
 
 const s = (date: string, close = '16:00'): CalSession => {
@@ -88,6 +89,13 @@ describe('morningDueDate (5:45 AM PT, weekdays, once a day)', () => {
   });
 });
 
+const NO_HEADLINES = {
+  shown: [],
+  more: 0,
+  filtered: { count: 0, example: null },
+  watchlist: { counts: [], top: null },
+};
+
 function data(over: Partial<MorningData> = {}, now = at545('2026-11-24')): MorningData {
   return {
     window: morningWindow(SESSIONS, now),
@@ -95,7 +103,7 @@ function data(over: Partial<MorningData> = {}, now = at545('2026-11-24')): Morni
     alerts: [],
     econ: { available: true, items: [] },
     filings: [],
-    headlines: [],
+    headlines: NO_HEADLINES,
     premarket: { available: false, feed: null, asOf: null, quotes: [], note: null },
     levels: [],
     active: [],
@@ -107,204 +115,381 @@ function data(over: Partial<MorningData> = {}, now = at545('2026-11-24')): Morni
   };
 }
 
-describe('renderMorning', () => {
-  it('subject counts alerts, filings and levels; recap and closed have their own subjects', () => {
-    expect(morningSubject(data())).toBe(
-      '[AIA] MORNING Tue, Nov 24: 0 alerts, 0 filings, 0 levels to watch',
-    );
-    expect(
-      morningSubject(
-        data({
-          alerts: [
-            {
-              subject: '[AIA] REVIEW ACMX: new closing low',
-              createdAt: at545('2026-11-24'),
-              sent: true,
-            },
-          ],
-          levels: [
-            {
-              display: 'ETFX',
-              instrumentSymbol: 'ETFX',
-              evaluatedSymbol: 'ETFX',
-              kind: 'drawdown_tier',
-              label: '15% drawdown tier',
-              level: 111.06,
-              close: 111.18,
-              distancePct: 0.11,
-              distanceDollars: 0.12,
-              direction: 'down',
-              status: 'PLACEHOLDER',
-            },
-          ],
-          filings: [
-            {
-              ticker: 'ACMX',
-              held: true,
-              items: [
-                {
-                  form: '8-K',
-                  label: '8-K: results of operations',
-                  dilution: false,
-                  filedAt: at545('2026-11-24'),
-                  url: 'https://x',
-                },
-              ],
-              insiderTrades: [],
-              otherInsiderFilings: 2,
-              otherCodes: { A: 2 },
-            },
-          ],
-        }),
-      ),
-    ).toBe('[AIA] MORNING Tue, Nov 24: 1 alert, 3 filings, 1 level to watch');
-    expect(morningSubject(data({}, at545('2026-11-23')))).toBe(
-      '[AIA] MORNING Mon, Nov 23: weekend recap + week ahead',
-    );
-    expect(morningSubject(data({}, at545('2026-11-26')))).toBe(
-      '[AIA] MORNING Thu, Nov 26: market closed',
-    );
-  });
+const level = {
+  display: 'ETFX',
+  instrumentSymbol: 'ETFX',
+  evaluatedSymbol: 'ETFX',
+  kind: 'drawdown_tier' as const,
+  label: '15% drawdown tier',
+  level: 85,
+  close: 85.09,
+  distancePct: 0.11,
+  distanceDollars: 0.09,
+  direction: 'down' as const,
+  status: 'PLACEHOLDER' as const,
+};
 
-  it('always shows alerts ("none"), skips other empty sections, ends with feed health', () => {
-    const { text } = renderMorning(data());
-    expect(text).toContain('OVERNIGHT ALERTS\n- none');
-    expect(text).not.toContain('NEW SEC FILINGS');
-    expect(text).not.toContain('HEADLINES');
-    expect(text).not.toContain('LEVELS TO WATCH');
-    expect(text).toContain('FEED HEALTH\n- All 6 feeds OK.');
-  });
+const earnings = (date: string, ticker: string, over = {}) => ({
+  date,
+  ticker,
+  eventType: 'earnings',
+  title: 'Q3 results',
+  timeOfDay: 'after_close',
+  estimated: false,
+  confirmed: true,
+  source: 'alphavantage',
+  previousDate: null,
+  note: null,
+  ...over,
+});
 
-  it('notes an early close in the header', () => {
-    const { text, html } = renderMorning(data({}, at545('2026-11-27')));
-    expect(text).toContain('opens 6:30 AM PT. EARLY CLOSE 10:00 AM PT.');
-    expect(html).toContain('Early close 10:00 AM PT');
-  });
-
-  it('economic calendar: high impact first, "released — see brief" without an actual, actual only if provided', () => {
-    const now = at545('2026-11-24');
-    const { text } = renderMorning(
-      data(
+/** A busy, made-up Tuesday: alerts, filings, econ releases, pre-market, levels, earnings. */
+function busyDay(): MorningData {
+  return data({
+    alerts: [
+      {
+        subject: '📝 [AIA] REVIEW ETFX: down 15%+ from 52-week high',
+        createdAt: new Date('2026-11-23T21:20:00Z'),
+        sent: true,
+      },
+      {
+        subject: '⚠️ [AIA] WARNING CNFX: at warning level',
+        createdAt: new Date('2026-11-23T21:20:00Z'),
+        sent: false,
+      },
+    ],
+    econ: {
+      available: true,
+      items: [
         {
-          econ: {
-            available: true,
-            items: [
-              {
-                at: new Date('2026-11-24T15:00:00Z'),
-                allDay: false,
-                impact: 'Medium',
-                title: 'Home Sales',
-                forecast: '4.1M',
-                previous: '4.0M',
-                actual: null,
-              },
-              {
-                at: new Date('2026-11-24T13:30:00Z'),
-                allDay: false,
-                impact: 'High',
-                title: 'Retail Sales m/m',
-                forecast: '0.2%',
-                previous: '0.8%',
-                actual: null,
-              },
-              {
-                at: new Date('2026-11-24T13:30:00Z'),
-                allDay: false,
-                impact: 'High',
-                title: 'GDP q/q',
-                forecast: '2.1%',
-                previous: '1.8%',
-                actual: '2.4%',
-              },
-            ],
-          },
+          at: new Date('2026-11-24T15:00:00Z'),
+          allDay: false,
+          impact: 'Medium',
+          title: 'Home Sales',
+          forecast: '4.1M',
+          previous: '4.0M',
+          actual: null,
         },
-        now,
-      ),
-    );
-    const econ = text.split('ECONOMIC CALENDAR TODAY\n')[1]!.split('\n\n')[0]!.split('\n');
-    expect(econ).toEqual([
-      '- 5:30 AM [High] Retail Sales m/m — forecast 0.2%, previous 0.8% — released 5:30 AM, see brief',
-      '- 5:30 AM [High] GDP q/q — actual 2.4% (forecast 2.1%, previous 1.8%)',
-      '- 7:00 AM [Medium] Home Sales — forecast 4.1M, previous 4.0M',
-    ]);
-    expect(renderMorning(data({ econ: { available: false, items: [] } })).text).toContain(
-      'ECONOMIC CALENDAR TODAY\n- unavailable',
-    );
-  });
-
-  it('holiday version: market closed, next open, upcoming events and feed health only', () => {
-    const { text } = renderMorning(
-      data(
         {
-          upcoming: {
-            available: { earnings: true, lastFetched: '2026-11-25' },
-            items: [
-              {
-                date: '2026-12-01',
-                ticker: 'ACMX',
-                eventType: 'earnings',
-                title: 'Earnings',
-                timeOfDay: 'after_close',
-                estimated: false,
-                confirmed: true,
-                source: 'alphavantage',
-                previousDate: '2026-11-30',
-                note: null,
-              },
-            ],
-          },
-          headlines: [
-            {
-              ticker: 'ACMX',
-              held: true,
-              items: [
-                {
-                  headline: 'h',
-                  source: 'Benzinga',
-                  url: null,
-                  publishedAt: at545('2026-11-26'),
-                  also: [],
-                },
-              ],
-              more: 0,
-            },
-          ],
+          at: new Date('2026-11-24T13:30:00Z'),
+          allDay: false,
+          impact: 'High',
+          title: 'Retail Sales m/m',
+          forecast: '0.2%',
+          previous: '0.8%',
+          actual: null,
         },
-        at545('2026-11-26'),
-      ),
-    );
-    expect(text).toContain('Market closed today. Next session Fri, Nov 27, opens 6:30 AM PT.');
-    expect(text).toContain(
-      'Tue, 12/1 ACMX earnings after close (confirmed): Earnings — moved from Mon, 11/30 [Alpha Vantage]',
-    );
-    expect(text).not.toContain('HEADLINES');
-    expect(text).not.toContain('PRE-MARKET');
-    expect(text).toContain('FEED HEALTH');
-  });
-
-  it('formats levels with % and $ to two decimals and marks non-confirmed rules', () => {
-    const { text } = renderMorning(
-      data({
-        levels: [
+        {
+          at: new Date('2026-11-24T13:30:00Z'),
+          allDay: false,
+          impact: 'High',
+          title: 'GDP q/q',
+          forecast: '2.1%',
+          previous: '1.8%',
+          actual: '2.4%',
+        },
+      ],
+    },
+    filings: [
+      {
+        ticker: 'ACMX',
+        held: true,
+        items: [
           {
-            display: 'ETFX',
-            instrumentSymbol: 'ETFX',
-            evaluatedSymbol: 'ETFX',
-            kind: 'drawdown_tier',
-            label: '15% drawdown tier',
-            level: 111.06,
-            close: 111.18,
-            distancePct: 0.11,
-            distanceDollars: 0.12,
-            direction: 'down',
-            status: 'PLACEHOLDER',
+            form: '8-K',
+            items: ['2.02', '9.01'],
+            label: '8-K: results of operations',
+            dilution: false,
+            filedAt: new Date('2026-11-23T21:06:00Z'),
+            url: 'https://www.sec.gov/x1',
           },
         ],
-      }),
+        insiderTrades: [
+          {
+            owner: 'Jane Q Doe',
+            role: 'CFO',
+            code: 'S',
+            lots: 2,
+            shares: 5000,
+            avgPrice: 51.1,
+            value: 255500,
+            firstDate: '2026-11-20',
+            lastDate: '2026-11-21',
+            plan10b51: true,
+            url: 'https://www.sec.gov/x2',
+          },
+        ],
+        otherInsiderFilings: 2,
+        otherCodes: { A: 2, F: 1 },
+      },
+      {
+        ticker: 'WTCH',
+        held: false,
+        items: [
+          {
+            form: 'S-3ASR',
+            items: [],
+            label: 'S-3ASR',
+            dilution: true,
+            filedAt: new Date('2026-11-23T22:00:00Z'),
+            url: 'https://www.sec.gov/x3',
+          },
+        ],
+        insiderTrades: [],
+        otherInsiderFilings: 0,
+        otherCodes: {},
+      },
+    ],
+    premarket: {
+      available: true,
+      feed: 'sip',
+      asOf: new Date('2026-11-24T13:29:00Z'),
+      quotes: [
+        { symbol: 'SPY', lastClose: 600, price: 603, changePct: 0.5 },
+        { symbol: 'ETFX', lastClose: 85.09, price: 84.57, changePct: -0.61 },
+        { symbol: 'OTCQ', lastClose: null, price: null, changePct: null },
+      ] as MorningData['premarket']['quotes'],
+      note: null,
+    },
+    levels: [level],
+    active: [
+      {
+        display: 'ETFX',
+        level: 'drawdown_15',
+        status: 'PLACEHOLDER',
+        firstFiredOn: '2026-11-20',
+        daysActive: 3,
+        message: 'ETFX closed at $85.09, 15.2% below its 52-week high',
+      },
+    ],
+    upcoming: {
+      available: { earnings: true, lastFetched: '2026-11-24' },
+      items: [
+        earnings('2026-11-24', 'ACMX'),
+        earnings('2026-11-26', 'BKX', {
+          previousDate: '2026-11-25',
+          source: 'seed',
+          estimated: true,
+          confirmed: false,
+        }),
+      ],
+    },
+  });
+}
+
+describe('morning email', () => {
+  it('subjects: emoji, date, counts; recap and holiday versions', () => {
+    expect(morningSubject(busyDay())).toBe(
+      '☀️ [AIA] MORNING Tue, Nov 24 · 2 alerts · 5 filings · 1 level',
     );
-    expect(text).toContain(
-      '- ETFX: 15% drawdown tier $111.06 — 0.11% / $0.12 above (close $111.18) [placeholder]',
+    expect(morningSubject(data())).toBe(
+      '☀️ [AIA] MORNING Tue, Nov 24 · 0 alerts · 0 filings · 0 levels',
+    );
+    expect(morningSubject(data({}, at545('2026-11-23')))).toBe(
+      '🗓️ [AIA] MORNING Mon, Nov 23 · weekend recap + week ahead',
+    );
+    expect(morningSubject(data({}, at545('2026-11-26')))).toBe(
+      '☀️ [AIA] MORNING Thu, Nov 26 · market closed',
+    );
+  });
+
+  it('inbox preview: alerts, next high-impact release, earnings today, nearest level', () => {
+    const d = busyDay();
+    d.econ.items.push({
+      at: new Date('2026-11-24T15:30:00Z'),
+      allDay: false,
+      impact: 'High',
+      title: 'CPI m/m',
+      forecast: null,
+      previous: null,
+      actual: null,
+    });
+    expect(morningPreviewText(d)).toBe(
+      '2 alerts overnight · CPI m/m 7:30 AM · ACMX earnings after close · ETFX 0.1% above 15% tier',
+    );
+    expect(morningPreviewText(data())).toBe('Quiet morning: no alerts, filings or levels to watch');
+    expect(morningPreviewText(data({}, at545('2026-11-26')))).toBe(
+      'Market closed · next session Fri, Nov 27',
+    );
+  });
+
+  it('header: today in the subtitle, early close called out; KPI tiles', () => {
+    const p = morningEmailProps(busyDay());
+    expect(p.title).toBe('☀️ Morning Brief');
+    expect(p.subtitle).toBe('Tue, Nov 24 · opens 6:30 AM PT · closes 1:00 PM PT');
+    expect(morningEmailProps(data({}, at545('2026-11-27'))).subtitle).toBe(
+      'Fri, Nov 27 · opens 6:30 AM PT · EARLY CLOSE 10:00 AM PT',
+    );
+    expect(p.kpis.map((k) => [k.label, k.value, k.sub])).toEqual([
+      ['Overnight alerts', '2', 'some not yet emailed'],
+      ['Filings', '5', '1 earnings 8-K'],
+      ['Levels', '1', 'to watch'],
+      ['Earnings', '2', 'ACMX Tue, BKX Thu'],
+    ]);
+  });
+
+  it('alerts are always shown ("None."), with severity and pending state', () => {
+    expect(morningEmailProps(data()).alerts.items).toEqual([]);
+    expect(morningEmailProps(busyDay()).alerts.items).toEqual([
+      {
+        time: 'Mon 1:20 PM',
+        severity: 'review',
+        text: 'ETFX: down 15%+ from 52-week high',
+        pending: false,
+      },
+      { time: 'Mon 1:20 PM', severity: 'warning', text: 'CNFX: at warning level', pending: true },
+    ]);
+  });
+
+  it('economic calendar: high impact first; "released, see brief" without an actual; never invents one', () => {
+    const p = morningEmailProps(busyDay());
+    expect(p.econ!.rows.map((r) => [r.time, r.impact, r.event, r.actual, r.status])).toEqual([
+      ['5:30 AM', 'High', 'Retail Sales m/m', null, 'released 5:30 AM, see brief'],
+      ['5:30 AM', 'High', 'GDP q/q', '2.4%', null],
+      ['7:00 AM', 'Medium', 'Home Sales', null, null],
+    ]);
+    expect(morningEmailProps(data({ econ: { available: false, items: [] } })).econ).toMatchObject({
+      available: false,
+    });
+    expect(morningEmailProps(data()).econ).toBeNull(); // nothing scheduled → section skipped
+  });
+
+  it('filings: plain-English titles, insider trades, other Form 4s, watchlist marked', () => {
+    expect(morningEmailProps(busyDay()).filings).toEqual([
+      {
+        tickers: ['ACMX'],
+        title: '8-K · results',
+        href: 'https://www.sec.gov/x1',
+        strong: true,
+        detail: '(Item 2.02) · Mon 1:06 PM',
+      },
+      {
+        tickers: ['ACMX'],
+        title: 'Form 4 · open-market sale',
+        href: 'https://www.sec.gov/x2',
+        strong: true,
+        detail: undefined,
+        lines: ['Jane Q Doe (CFO) sold 5,000 sh @ $51.10 avg ($255,500) · 10b5-1 plan'],
+      },
+      {
+        tickers: ['ACMX'],
+        title: 'Form 4 · 2 insider filings, no open-market buys/sells',
+        detail: '(grant/award ×2, shares withheld for tax ×1)',
+      },
+      {
+        tickers: ['WTCH'],
+        title: 'S-3ASR · possible share issuance',
+        href: 'https://www.sec.gov/x3',
+        strong: true,
+        detail: 'Mon 2:00 PM · watchlist',
+      },
+    ]);
+  });
+
+  it('pre-market, levels, still-active, upcoming with source pills and date changes', () => {
+    const p = morningEmailProps(busyDay());
+    expect(p.premarket).toEqual({
+      title: 'Pre-market · as of 5:29 AM PT (15-min delayed)',
+      note: null,
+      rows: [
+        { symbol: 'SPY', close: '$600.00', pre: '$603.00 +0.50%', changePct: 0.5 },
+        { symbol: 'ETFX', close: '$85.09', pre: '$84.57 −0.61%', changePct: -0.61 },
+        { symbol: 'OTCQ', close: '—', pre: 'no data source', changePct: null },
+      ],
+    });
+    expect(p.levels).toEqual(['ETFX $85.09, 0.1% above its $85.00 15% tier']);
+    expect(p.active[0]).toMatchObject({
+      ticker: 'ETFX',
+      status: 'placeholder',
+      since: '3 days active, since Nov 20',
+    });
+    expect(p.upcoming!.items).toEqual([
+      {
+        date: 'Tue 11/24',
+        ticker: 'ACMX',
+        what: 'earnings after close (confirmed)',
+        title: 'Q3 results',
+        moved: null,
+        note: null,
+        source: 'alphavantage',
+        sourceTone: 'gain',
+      },
+      {
+        date: 'Thu 11/26',
+        ticker: 'BKX',
+        what: 'earnings after close (estimated)',
+        title: 'Q3 results',
+        moved: 'moved from Wed 11/25',
+        note: null,
+        source: 'manual',
+        sourceTone: 'neutral',
+      },
+    ]);
+    expect(p.footer).toEqual([
+      '🩺 All 6 feeds OK',
+      'Covers Mon 1:00 PM → Tue 5:45 AM PT · generated Tue 5:45 AM PT',
+    ]);
+  });
+
+  it('holiday version: closed header, alerts, upcoming and feed health only', () => {
+    const p = morningEmailProps({
+      ...busyDay(),
+      window: morningWindow(SESSIONS, at545('2026-11-26')),
+      generatedAt: at545('2026-11-26'),
+    });
+    expect(p.title).toBe('☀️ Market Closed');
+    expect(p.subtitle).toBe(
+      'Thu, Nov 26 · market closed · next session Fri, Nov 27, opens 6:30 AM PT',
+    );
+    expect(p).toMatchObject({
+      econ: null,
+      filings: [],
+      headlines: null,
+      premarket: null,
+      levels: [],
+      active: [],
+    });
+    expect(p.upcoming!.items).toHaveLength(2);
+  });
+
+  it('recap: last week and its alerts', () => {
+    const p = morningEmailProps(
+      data(
+        {
+          lastWeek: [
+            { symbol: 'SPY', held: false, changePct: 2.6 },
+            { symbol: 'ETFX', held: true, changePct: -4.2 },
+          ],
+          pastWeekAlerts: [
+            {
+              subject: '📝 [AIA] REVIEW ETFX: down 10%+ from 52-week high',
+              createdAt: new Date('2026-11-18T21:20:00Z'),
+            },
+          ],
+        },
+        at545('2026-11-23'),
+      ),
+    );
+    expect(p.title).toBe('🗓️ Weekend Recap + Week Ahead');
+    expect(p.alerts.title).toBe('Alerts since Friday');
+    expect(p.lastWeek).toEqual({
+      rows: [
+        { symbol: 'SPY', changePct: 2.6 },
+        { symbol: 'ETFX', changePct: -4.2 },
+      ],
+      alerts: ['Wed 1:20 PM — REVIEW ETFX: down 10%+ from 52-week high'],
+    });
+  });
+
+  it('renders email-safe HTML and text (snapshots)', async () => {
+    const m = await renderMorning(busyDay());
+    expect(m.html).not.toMatch(/<img|<svg|<script|<link[^>]+stylesheet/i);
+    expect(Buffer.byteLength(m.html)).toBeLessThan(MAX_HTML_BYTES);
+    expect(m.text).toContain('OVERNIGHT ALERTS\n- Mon 1:20 PM — ETFX: down 15%+ from 52-week high');
+    await expect(m.html).toMatchFileSnapshot('./__snapshots__/morning.html');
+    await expect(m.text).toMatchFileSnapshot('./__snapshots__/morning.txt');
+    await expect(`${JSON.stringify(m.props, null, 2)}\n`).toMatchFileSnapshot(
+      '../../../../packages/emails/preview/morning-sample.json',
     );
   });
 });

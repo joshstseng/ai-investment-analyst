@@ -114,3 +114,53 @@ export const FORM4_CODES: Record<string, string> = {
   X: 'option exercise',
   W: 'acquired/disposed by will',
 };
+
+/** Short 8-K item names for email titles ("8-K · results"); others fall back to EIGHT_K_ITEMS. */
+const SHORT_8K: Record<string, string> = {
+  '1.01': 'material agreement',
+  '2.02': 'results',
+  '5.02': 'management change',
+  '7.01': 'Reg FD disclosure',
+  '8.01': 'other events',
+};
+
+export interface FilingTitle {
+  /** e.g. "8-K · results", "10-Q · quarterly report", "S-3 · possible share issuance". */
+  title: string;
+  /** e.g. "Item 2.02" / "Items 2.02, 5.02" (8-Ks; exhibits-only 9.01 dropped when others exist). */
+  itemsNote: string | null;
+  /** 8-K with item 2.02. */
+  earnings: boolean;
+  dilution: boolean;
+  notable: boolean;
+}
+
+/** Compact plain-English title for a filing in email lists. */
+export function filingTitle(form: string, items: readonly string[] = []): FilingTitle {
+  const d = describeFiling(form, items);
+  const base = form.replace(/\/A$/, '');
+  const amended = form.endsWith('/A') ? ' (amended)' : '';
+  const out = (title: string, itemsNote: string | null = null): FilingTitle => ({
+    title,
+    itemsNote,
+    earnings: base === '8-K' && items.includes('2.02'),
+    dilution: d.dilution,
+    notable: d.notable,
+  });
+  if (base === '8-K') {
+    const meaningful = items.filter((i) => i !== '9.01');
+    const shown = meaningful.length ? meaningful : items;
+    const names = shown.map((i) => SHORT_8K[i] ?? EIGHT_K_ITEMS[i] ?? `item ${i}`);
+    return out(
+      `8-K${amended} · ${names.length ? names.join(', ') : 'current report'}`,
+      shown.length ? `Item${shown.length > 1 ? 's' : ''} ${shown.join(', ')}` : null,
+    );
+  }
+  if (base === '10-Q') return out(`10-Q${amended} · quarterly report`);
+  if (base === '10-K') return out(`10-K${amended} · annual report`);
+  if (base === 'S-1' || base === 'S-3' || base === 'S-3ASR' || /^424B\d$/.test(base)) {
+    return out(`${base}${amended} · possible share issuance`);
+  }
+  if (base === '4') return out(`Form 4${amended} · insider filing`);
+  return out(form);
+}

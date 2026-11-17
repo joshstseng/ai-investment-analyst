@@ -1,11 +1,13 @@
 /**
  * Levels to watch (pure): for each holding, rule levels the last close is approaching but has
- * not crossed, within `withinPct`. Crossed levels are "still-active conditions", not listed here.
- * Options are measured on the underlying's close.
+ * not crossed, within `withinPct` (per kind via `withinPctByKind`, e.g. 8% for 52-week lows).
+ * Crossed levels are "still-active conditions", not listed here. Options are measured on the
+ * underlying's close. `nextLevel` is the nearest uncrossed level at any distance.
  */
 import type { RuleStatus } from './rules';
 
-export type LevelKind = 'stop' | 'warning' | 'take_profit' | 'trailing_stop' | 'drawdown_tier';
+export type LevelKind =
+  'stop' | 'warning' | 'take_profit' | 'trailing_stop' | 'drawdown_tier' | 'below_cost' | 'low_52w';
 
 export interface LevelRuleInput {
   status: RuleStatus;
@@ -23,6 +25,8 @@ export interface LevelInstrumentInput {
   close: number | null;
   /** 52-week intraday high of the evaluated symbol (for ETF drawdown tiers). */
   high52w?: number | null;
+  /** Lowest close in the 52 weeks before the as-of day (for new_52w_low rules). */
+  low52w?: number | null;
   rules: readonly LevelRuleInput[];
 }
 
@@ -47,9 +51,13 @@ const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : n
 
 export function levelsToWatch(
   instruments: readonly LevelInstrumentInput[],
-  opts: { withinPct?: number; asOfDate: string },
+  opts: {
+    withinPct?: number;
+    withinPctByKind?: Partial<Record<LevelKind, number>>;
+    asOfDate: string;
+  },
 ): LevelToWatch[] {
-  const within = opts.withinPct ?? 5;
+  const withinFor = (k: LevelKind) => opts.withinPctByKind?.[k] ?? opts.withinPct ?? 5;
   const out: LevelToWatch[] = [];
   for (const inst of instruments) {
     const close = inst.close;
@@ -64,7 +72,7 @@ export function levelsToWatch(
       const gap = direction === 'down' ? close - level : level - close;
       if (gap <= 0) return; // already at/through the level → active condition, not "to watch"
       const pct = (gap / close) * 100;
-      if (pct > within + 1e-9) return;
+      if (pct > withinFor(kind) + 1e-9) return;
       out.push({
         display: inst.display,
         instrumentSymbol: inst.instrumentSymbol,
@@ -125,10 +133,25 @@ export function levelsToWatch(
             );
           break;
         }
+        case 'close_below_cost': {
+          const cost = num(p.cost);
+          if (cost !== null) add('below_cost', 'cost', cost, 'down', r.status);
+          break;
+        }
+        case 'new_52w_low': {
+          const low = inst.low52w;
+          if (typeof low === 'number' && low > 0) add('low_52w', '52w low', low, 'down', r.status);
+          break;
+        }
         default:
           break;
       }
     }
   }
   return out.sort((a, b) => a.distancePct - b.distancePct);
+}
+
+/** The nearest level the close hasn't crossed yet, at any distance (null if none). */
+export function nextLevel(inst: LevelInstrumentInput, asOfDate: string): LevelToWatch | null {
+  return levelsToWatch([inst], { withinPct: Number.POSITIVE_INFINITY, asOfDate })[0] ?? null;
 }

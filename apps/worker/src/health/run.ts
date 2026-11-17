@@ -119,16 +119,20 @@ export async function runFeedHealth(
   const now = opts.now ?? new Date();
   const snapshot = await gatherHealth(ctx, now);
   const results = assessFeeds(snapshot);
-  const previous = new Map<string, FeedState>(
-    (
-      await ctx.db.select({ feed: feedStatus.feed, status: feedStatus.status }).from(feedStatus)
-    ).map((r) => [r.feed, r.status]),
-  );
+  const prevRows = await ctx.db
+    .select({ feed: feedStatus.feed, status: feedStatus.status, since: feedStatus.since })
+    .from(feedStatus);
+  const previous = new Map<string, FeedState>(prevRows.map((r) => [r.feed, r.status]));
+  const sinceBy = new Map(prevRows.map((r) => [r.feed, r.since]));
   const transitions = feedTransitions(previous, results);
   for (const r of results) await recordFeedStatus(ctx.db, r, now);
   if (opts.alert) {
     for (const t of transitions) {
-      const msg = composeHealthAlert(t, now);
+      const msg = await composeHealthAlert(t, now, {
+        // A recovery's outage started when the feed last changed state.
+        since: t.kind === 'recovery' ? (sinceBy.get(t.feed) ?? null) : now,
+        others: results.map((r) => ({ feed: r.feed, status: r.status })),
+      });
       await enqueueAlert(ctx.db, {
         dedupeKey: `health:${t.feed}:${t.kind}:${now.toISOString().slice(0, 16)}`,
         kind: 'health',

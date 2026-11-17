@@ -25,6 +25,8 @@ const ruleOverride = z
     thesis_break_triggers: z.string().min(1).optional(),
     /** Included in every alert from this rule. */
     alert_note: z.string().min(1).optional(),
+    /** The planned action shown in this rule's alerts, e.g. "Sell 3 of 9 shares at $200-210". */
+    plan_action: z.string().min(1).optional(),
     notes: z.string().optional(),
     confirmed_at: isoDate.optional(),
     needs_input: z.array(z.string()).default([]),

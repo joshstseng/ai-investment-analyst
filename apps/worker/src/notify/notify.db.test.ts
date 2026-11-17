@@ -97,10 +97,10 @@ describe.skipIf(!url)('alerts (Postgres)', () => {
         (a) => a.subject,
       );
       expect(subjects).toEqual([
-        '[AIA] WARNING BKX: at warning level',
-        '[AIA] ACTION BKX: closed below stop (escalated)',
-        '[AIA] ACTION BKX: closed below stop (further move)',
-        '[AIA] WARNING BKX: at warning level',
+        '⚠️ [AIA] WARNING BKX: at warning level',
+        '‼️ [AIA] ACTION BKX: closed below stop (escalated)',
+        '‼️ [AIA] ACTION BKX: closed below stop (further move)',
+        '⚠️ [AIA] WARNING BKX: at warning level',
       ]);
     });
   });

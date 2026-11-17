@@ -1,0 +1,58 @@
+Mon, Nov 16 · close · news & filings since Fri 2:15 PM PT
+
+Portfolio today: −$1,203 (−3.0% · value $39,408) | Alerts: 4 (1 ⚠️ · 3 📝) | Active: 1 (still active) | Filings: 7 (1 earnings 8-K)
+
+ALERTS TODAY
+------------
+- WARNING CNFX [confirmed]: $49.60 −1.3% — Closed at $49.60, at or below the $50.00 warning level (stop $46.30). | Your position: 9 sh −$24 (−5.0%) · 1% of portfolio
+- REVIEW ETFX [placeholder, escalated]: $99.00 −3.0% — 17.5% below the 52-week high ($120.00), crossing the 15% tier. Next tier (20%) at $96.00. | Your position: 140 sh across 3 lots −$742 (−5.1%) · 36% of portfolio
+- REVIEW MOVX: $55.00 −7.4% — one-day move past ±7% | position −$150 (−12.0%)
+- REVIEW SPCQ: $4.20 −5.4% — new 52-week closing low (was $4.50) | position −$190 (−47.5%)
+
+SEC FILINGS
+-----------
+- ACMX: 8-K · results (Item 2.02) · Mon 1:06 PM https://www.sec.gov/Archives/edgar/data/1/000000000126000001/0000000001-26-000001-index.htm
+- ACMX: 10-Q · quarterly report Mon 1:08 PM https://www.sec.gov/Archives/edgar/data/1/000000000126000002/0000000001-26-000002-index.htm
+- CNFX: Form 4 · open-market sale Fri 4:30 PM https://www.sec.gov/Archives/edgar/data/2/000000000226000003/0000000002-26-000003-index.htm
+    Jane Q Doe (CFO) sold 5,000 sh @ $51.10 avg ($255,500) · 10b5-1 plan
+- GAINX, MOVX, OPTX ×3: Form 4 · insider filings · no open-market buys/sells
+
+HEADLINES
+---------
+- Regulators propose new export rules for widget makers — example.com, Mon [ETFX, IDXQ, WTCH (watchlist)]
+  https://www.example.com/news/1
+- Court issues order against event-contract operators — news.example.org, Mon [MOVX] (+3 more MOVX stories)
+  https://news.example.org/2
++ 12 more holding headlines · 5 filtered as noise (e.g. "Top Stocks to Watch After Weekend Chaos")
+Watchlist stories: WTCH 16 · WTCQ 2 · top: Chipmakers fail to dismiss price-fixing suit
+
+POSITIONS (BY TODAY'S MOVE)
+---------------------------
+- GAINX R: $42.00 +0.3% | $840 | P/L +$140 (+20.0%) | next: warning $39.40 · 6.2% [draft]
+- LOTX R+I (12 @ 70.10 · 9 @ 84.40): $80.72 +0.3% | $1,695 | P/L +$94 (+5.9%) | next: 52w low $70.10 · 13.2% [placeholder]
+- CNFX R: $49.60 −1.3% | $446 | P/L −$24 (−5.0%) | next: stop $46.30 · 6.7%
+- IDXQ R: $434.00 −2.7% | $5,208 | P/L −$432 (−7.7%) | next: 15% tier $425.00 · 2.1% [placeholder]
+- ETFX R+I (3 lots · 140 sh): $99.00 −3.0% | $13,860 | P/L −$742 (−5.1%) | next: 20% tier $96.00 · 3.0% [placeholder]
+- SPCQ R: $4.20 −5.4% | $210 | P/L −$190 (−47.5%) | next: at 52w low
+- MOVX I: $55.00 −7.4% | $1,100 | P/L −$150 (−12.0%) | next: —
+Options & untracked: OPTX Jan-21-2028 $40 call · OPTX $48.00 +0.4%, 20.0% above strike · OTCQ · no data source · 💡 Dec 15: Tax checkpoint: decide sell-for-loss; no rebuy…
+
+LEVELS TO WATCH
+---------------
+- IDXQ $434.00, 2.1% above its $425.00 15% tier
+- ETFX $99.00, 3.0% above its $96.00 20% tier
+
+STILL-ACTIVE CONDITIONS
+-----------------------
+- REVIEW IDXQ [placeholder, active since Nov 13]: $434.00 −2.7% — 13.2% below the 52-week high ($500.00), past the 10% tier. Next tier (15%) at $425.00. | Your position: 12 sh −$432 (−7.7%) · 14% of portfolio
+
+WEEKLY: RULES TO WRITE AND MISSING INPUT
+----------------------------------------
+Rules to write: MOVX (risk stop, take profit)
+Needs your input: GAINX: why i own it
+
+--
+🩺 Feeds OK · prices: Alpaca SIP daily bars · filings: SEC EDGAR · news: Benzinga
+Not checked: OTCQ day move, OPTX280121C00040000 option value (no data source) · CNFX trailing stop (not started yet)
+Close of Mon, Nov 16 · news & filings since Fri 2:15 PM PT · generated Mon 2:15 PM PT
+AI Investment Analyst · research and alerts only, no trading

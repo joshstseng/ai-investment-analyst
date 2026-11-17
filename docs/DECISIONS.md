@@ -52,3 +52,13 @@ Decisions made while building Step 1 that later milestones must follow. Newest l
 - **Form 4**: open-market buys/sells (codes P, S) listed per insider and filing (shares, weighted average price, $ value, 10b5-1 flag); all other codes counted.
 - **Pre-market** uses SIP 1-minute bars (15-min delayed on the free plan) up to now − 16 min, IEX as fallback.
 - **Levels to watch**: stop, warning, take-profit, started trailing stop, and the next untriggered ETF drawdown tier within 5% of the last close; crossed levels are "still-active conditions" instead.
+
+## 2026-11-16: email redesign
+
+- **All emails share one design system** (`packages/emails`, React Email): navy header, KPI tiles, colored-border cards, range bars, pills, tables. Plain-text parts are kept. Subjects start with a type emoji (‼️ ⚠️ 📝 💡 🩺 📊 ☀️ 🗓️; 📰 reserved for Step 2) and every email carries hidden inbox preview text.
+- **Digest section order = morning email order:** alerts today → SEC filings → headlines → positions → levels to watch → still-active conditions → weekly section. "Alerts today" is always shown ("None."); a condition alerted on an earlier day appears under still-active conditions.
+- **Positions:** sorted by the day's % move, best first; no sparkline column. Options and no-data names go to an "Options & untracked" box (underlying price, distance to strike, upcoming reminder). Portfolio day change and value count stocks/ETFs only; options are excluded and noted.
+- **Next level** = the nearest uncrossed stop, warning, take-profit, ETF tier, cost (close_below_cost) or prior 52-week closing low, any distance; orange within 7%. **Levels to watch** = within 5%, or within 8% of a 52-week low for names with a new_52w_low rule.
+- **Headlines:** stories tagged with 5+ tickers count as roundups and are filtered, even when they mention a holding.
+- **Gmail clipping:** HTML over 90 KB is never sent as is; the digest switches to a trimmed layout.
+- **plan_action** (new optional rule field) is what a CONFIRMED rule's alert says to do; fill it in seed-overrides.json for every CONFIRMED price rule.

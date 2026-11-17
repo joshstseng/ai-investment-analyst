@@ -1,0 +1,187 @@
+{
+  "subject": "☀️ [AIA] MORNING Tue, Nov 24 · 2 alerts · 5 filings · 1 level",
+  "preview": "2 alerts overnight · ACMX earnings after close · ETFX 0.1% above 15% tier",
+  "title": "☀️ Morning Brief",
+  "subtitle": "Tue, Nov 24 · opens 6:30 AM PT · closes 1:00 PM PT",
+  "kpis": [
+    {
+      "label": "Overnight alerts",
+      "value": "2",
+      "sub": "some not yet emailed"
+    },
+    {
+      "label": "Filings",
+      "value": "5",
+      "sub": "1 earnings 8-K"
+    },
+    {
+      "label": "Levels",
+      "value": "1",
+      "sub": "to watch"
+    },
+    {
+      "label": "Earnings",
+      "value": "2",
+      "sub": "ACMX Tue, BKX Thu"
+    }
+  ],
+  "alerts": {
+    "title": "Overnight alerts",
+    "items": [
+      {
+        "time": "Mon 1:20 PM",
+        "severity": "review",
+        "text": "ETFX: down 15%+ from 52-week high",
+        "pending": false
+      },
+      {
+        "time": "Mon 1:20 PM",
+        "severity": "warning",
+        "text": "CNFX: at warning level",
+        "pending": true
+      }
+    ]
+  },
+  "econ": {
+    "title": "Economic calendar today",
+    "available": true,
+    "rows": [
+      {
+        "time": "5:30 AM",
+        "event": "Retail Sales m/m",
+        "impact": "High",
+        "forecast": "0.2%",
+        "previous": "0.8%",
+        "actual": null,
+        "status": "released 5:30 AM, see brief"
+      },
+      {
+        "time": "5:30 AM",
+        "event": "GDP q/q",
+        "impact": "High",
+        "forecast": "2.1%",
+        "previous": "1.8%",
+        "actual": "2.4%",
+        "status": null
+      },
+      {
+        "time": "7:00 AM",
+        "event": "Home Sales",
+        "impact": "Medium",
+        "forecast": "4.1M",
+        "previous": "4.0M",
+        "actual": null,
+        "status": null
+      }
+    ]
+  },
+  "filings": [
+    {
+      "tickers": [
+        "ACMX"
+      ],
+      "title": "8-K · results",
+      "href": "https://www.sec.gov/x1",
+      "strong": true,
+      "detail": "(Item 2.02) · Mon 1:06 PM"
+    },
+    {
+      "tickers": [
+        "ACMX"
+      ],
+      "title": "Form 4 · open-market sale",
+      "href": "https://www.sec.gov/x2",
+      "strong": true,
+      "lines": [
+        "Jane Q Doe (CFO) sold 5,000 sh @ $51.10 avg ($255,500) · 10b5-1 plan"
+      ]
+    },
+    {
+      "tickers": [
+        "ACMX"
+      ],
+      "title": "Form 4 · 2 insider filings, no open-market buys/sells",
+      "detail": "(grant/award ×2, shares withheld for tax ×1)"
+    },
+    {
+      "tickers": [
+        "WTCH"
+      ],
+      "title": "S-3ASR · possible share issuance",
+      "href": "https://www.sec.gov/x3",
+      "strong": true,
+      "detail": "Mon 2:00 PM · watchlist"
+    }
+  ],
+  "headlines": {
+    "items": [],
+    "notes": [],
+    "watchlist": null
+  },
+  "premarket": {
+    "title": "Pre-market · as of 5:29 AM PT (15-min delayed)",
+    "note": null,
+    "rows": [
+      {
+        "symbol": "SPY",
+        "close": "$600.00",
+        "pre": "$603.00 +0.50%",
+        "changePct": 0.5
+      },
+      {
+        "symbol": "ETFX",
+        "close": "$85.09",
+        "pre": "$84.57 −0.61%",
+        "changePct": -0.61
+      },
+      {
+        "symbol": "OTCQ",
+        "close": "—",
+        "pre": "no data source",
+        "changePct": null
+      }
+    ]
+  },
+  "levels": [
+    "ETFX $85.09, 0.1% above its $85.00 15% tier"
+  ],
+  "active": [
+    {
+      "ticker": "ETFX",
+      "status": "placeholder",
+      "since": "3 days active, since Nov 20",
+      "message": "ETFX closed at $85.09, 15.2% below its 52-week high"
+    }
+  ],
+  "upcoming": {
+    "title": "Upcoming 7 days",
+    "note": null,
+    "items": [
+      {
+        "date": "Tue 11/24",
+        "ticker": "ACMX",
+        "what": "earnings after close (confirmed)",
+        "title": "Q3 results",
+        "moved": null,
+        "note": null,
+        "source": "alphavantage",
+        "sourceTone": "gain"
+      },
+      {
+        "date": "Thu 11/26",
+        "ticker": "BKX",
+        "what": "earnings after close (estimated)",
+        "title": "Q3 results",
+        "moved": "moved from Wed 11/25",
+        "note": null,
+        "source": "manual",
+        "sourceTone": "neutral"
+      }
+    ]
+  },
+  "lastWeek": null,
+  "footer": [
+    "🩺 All 6 feeds OK",
+    "Covers Mon 1:00 PM → Tue 5:45 AM PT · generated Tue 5:45 AM PT"
+  ]
+}

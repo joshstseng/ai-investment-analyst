@@ -1,0 +1,1 @@
+ALTER TABLE "exit_rules" ADD COLUMN "plan_action" text;

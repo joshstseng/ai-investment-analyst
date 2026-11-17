@@ -1,3 +1,5 @@
 pnpm-lock.yaml
 data/
 packages/db/drizzle/
+apps/worker/src/**/__snapshots__/
+packages/emails/preview/*.json

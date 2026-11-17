@@ -4,11 +4,37 @@
  * ticker, rules not checked (and why), feed problems. On the week's last session it adds
  * "rules to write" and missing user input.
  */
-import { addDays, isRuleToWrite, nyDate, zonedTimeToUtc } from '@aia/core';
+import {
+  accountTag,
+  addDays,
+  attentionRange,
+  byAttention,
+  COMPACT_RULE_TYPES,
+  filingTitle,
+  isRuleToWrite,
+  levelsToWatch,
+  lotLine,
+  nextLevel,
+  nyDate,
+  portfolioDay,
+  positionPL,
+  ruleAlertTag,
+  selectHeadlines,
+  zonedTimeToUtc,
+  type AttentionRange,
+  type AttentionTag,
+  type HeadlineSelection,
+  type LevelToWatch,
+  type Outcome,
+  type PortfolioDay,
+  type RuleStatus,
+  type RuleType,
+} from '@aia/core';
 import {
   accounts,
   alerts,
   alertStates,
+  events,
   exitRules,
   feedStatus,
   filings,
@@ -24,7 +50,9 @@ import {
 } from '@aia/db';
 import { and, asc, desc, eq, gt, gte, inArray, lt, lte, ne } from 'drizzle-orm';
 import { loadUniverse } from '../market/universe';
-import { ACCOUNT_LABEL, escapeHtml, htmlDoc, money, ptTime, signedPct } from './format';
+import { loadLevelInputs, WATCH_WITHIN } from '../morning/levels';
+import { summarizeTrades, type Form4Summary, type TradeSummary } from '../sec/form4';
+import { ACCOUNT_LABEL } from './format';
 
 export interface DigestLevel {
   level: number;
@@ -50,6 +78,74 @@ export interface DigestPosition {
   }[];
   stop: DigestLevel | null;
   takeProfit: DigestLevel | null;
+  /** Total shares (contracts for options). */
+  shares: number;
+  /** Stocks/ETFs at today's close; null for options and positions without a close. */
+  value: number | null;
+  plDollars: number | null;
+  plPct: number | null;
+  /** Share of the counted portfolio value (stocks/ETFs). */
+  weightPct: number | null;
+  /** R / I / R+I */
+  accountTag: string;
+  /** Multi-lot detail, e.g. "12 @ 70.10 · 9 @ 84.40" or "3 lots · 140 sh". */
+  lotLine: string | null;
+  /** Nearest uncrossed level (stop, warning, tier, take-profit, cost, 52w low). */
+  next: LevelToWatch | null;
+  /** A new_52w_low rule fired today. */
+  atNewLow: boolean;
+  /** Options: the contract and how far the underlying is from the strike. */
+  option: {
+    right: string | null;
+    strike: number | null;
+    expiry: string | null;
+    vsStrikePct: number | null;
+  } | null;
+  /** Next reminder event for the (underlying) ticker within 60 days. */
+  reminder: { date: string; title: string } | null;
+}
+
+export interface AttentionItem {
+  ruleId: number;
+  display: string;
+  symbol: string;
+  evaluatedSymbol: string;
+  tag: AttentionTag;
+  status: string;
+  ruleType: string;
+  /** Fired level, e.g. "stop", "warning", "drawdown_15", "move_down", "new_low". */
+  level: string;
+  message: string;
+  observed: Record<string, unknown>;
+  /** Alerted today on an escalation (first fired before today). */
+  escalated: boolean;
+  alertedToday: boolean;
+  firstFiredOn: string | null;
+  close: number | null;
+  dayPct: number | null;
+  compact: boolean;
+  range: AttentionRange | null;
+  position: {
+    shares: number;
+    lots: number;
+    plDollars: number | null;
+    plPct: number | null;
+    weightPct: number | null;
+  } | null;
+}
+
+export interface DigestFiling {
+  /** Ticker chips; grouped Form 4 lines use "ACMX ×3". */
+  tickers: string[];
+  held: boolean;
+  title: string;
+  itemsNote: string | null;
+  /** Results, dilution, management change, insider buys/sells. */
+  strong: boolean;
+  url: string | null;
+  filedAt: Date | null;
+  /** Form 4 open-market buys/sells (P/S), one per insider and direction. */
+  trades: TradeSummary[];
 }
 
 /**
@@ -96,6 +192,17 @@ export interface DigestData {
   feedIssues: { feed: string; status: string; detail: string | null; since: Date }[];
   rulesToWrite: { display: string; purposes: string[] }[];
   needsInput: string[];
+  /** Day change and value over stocks/ETFs (options excluded). */
+  portfolio: PortfolioDay;
+  /** Alerts today and still-active conditions, most severe first. */
+  attention: AttentionItem[];
+  /** Within 5% of a stop/warning/take-profit/tier/cost, or 8% of a 52-week low. */
+  levelsToWatch: LevelToWatch[];
+  filingList: DigestFiling[];
+  filingCounts: { total: number; earnings8k: number };
+  headlineSelection: HeadlineSelection;
+  /** Today's rule alerts by tag. */
+  alertMix: Partial<Record<AttentionTag, number>>;
 }
 
 const HEADLINES_PER_TICKER = 5;
@@ -159,7 +266,11 @@ export async function gatherDigest(db: Db, date: string, now = new Date()): Prom
       account: accounts.accountType,
       quantity: holdings.quantity,
       avgCost: holdings.avgCost,
+      costBasisTotal: holdings.costBasisTotal,
       unconfirmed: holdings.needsConfirmation,
+      optionRight: instruments.optionRight,
+      strike: instruments.strike,
+      expiry: instruments.expiry,
     })
     .from(holdings)
     .innerJoin(instruments, eq(holdings.instrumentId, instruments.id))
@@ -214,6 +325,28 @@ export async function gatherDigest(db: Db, date: string, now = new Date()): Prom
     .where(eq(ruleEvaluations.asOfDate, date));
   const evalBy = new Map(todaysEvals.map((e) => [e.exitRuleId, e]));
 
+  const levelInputs = await loadLevelInputs(db, date);
+  const levelInputBy = new Map(levelInputs.map((l) => [l.instrumentSymbol, l]));
+  const firedToday = todaysEvals.filter((e) => e.outcome === 'fired');
+  const ruleById = new Map(rules.map((r) => [r.id, r]));
+  const newLowToday = new Set(
+    firedToday
+      .filter((e) => ruleById.get(e.exitRuleId)?.ruleType === 'new_52w_low')
+      .map((e) => ruleById.get(e.exitRuleId)!.instrumentId),
+  );
+  const reminderRows = await db
+    .select({ ticker: events.ticker, date: events.date, title: events.title })
+    .from(events)
+    .where(
+      and(
+        eq(events.eventType, 'reminder'),
+        eq(events.status, 'active'),
+        gte(events.date, date),
+        lte(events.date, addDays(date, 60)),
+      ),
+    )
+    .orderBy(asc(events.date));
+
   const byInstrument = new Map<number, typeof lotRows>();
   for (const l of lotRows)
     byInstrument.set(l.instrumentId, [...(byInstrument.get(l.instrumentId) ?? []), l]);
@@ -265,6 +398,16 @@ export async function gatherDigest(db: Db, date: string, now = new Date()): Prom
     }
     const nearest = (xs: DigestLevel[]) =>
       xs.length ? xs.reduce((a, b) => (Math.abs(b.distPct) < Math.abs(a.distPct) ? b : a)) : null;
+    const lotInputs = lots.map((l) => ({
+      account: l.account,
+      quantity: Number(l.quantity ?? 0),
+      avgCost: Number(l.avgCost ?? 0),
+      costBasisTotal: l.costBasisTotal === null ? null : Number(l.costBasisTotal),
+    }));
+    const pl = !isOption && close !== null ? positionPL(lotInputs, close) : null;
+    const levelInput = levelInputBy.get(f.symbol);
+    const strike = f.strike === null ? null : Number(f.strike);
+    const reminder = reminderRows.find((e) => e.ticker === evaluatedSymbol) ?? null;
     positions.push({
       display: isOption && f.name ? f.name : f.symbol,
       symbol: f.symbol,
@@ -285,8 +428,43 @@ export async function gatherDigest(db: Db, date: string, now = new Date()): Prom
       }),
       stop: nearest(stops),
       takeProfit: nearest(tps),
+      shares: lotInputs.reduce((a, l) => a + l.quantity, 0),
+      value: pl?.value ?? null,
+      plDollars: pl?.plDollars ?? null,
+      plPct: pl?.plPct ?? null,
+      weightPct: null, // set below, once the portfolio total is known
+      accountTag: accountTag(lots.map((l) => l.account)),
+      lotLine: lotLine(lotInputs),
+      next: levelInput ? nextLevel(levelInput, date) : null,
+      atNewLow: newLowToday.has(instrumentId),
+      option: isOption
+        ? {
+            right: f.optionRight,
+            strike,
+            expiry: f.expiry,
+            vsStrikePct:
+              close !== null && strike ? Math.round(((close - strike) / strike) * 1000) / 10 : null,
+          }
+        : null,
+      reminder: reminder ? { date: reminder.date, title: reminder.title } : null,
     });
   }
+
+  const portfolio = portfolioDay(
+    positions.map((p) => ({
+      display: p.display,
+      isOption: p.isOption,
+      shares: p.shares,
+      close: p.close,
+      prevClose: closeOf(p.evaluatedSymbol, prevDate),
+    })),
+  );
+  for (const p of positions) {
+    if (p.value !== null && portfolio.value > 0) {
+      p.weightPct = Math.round((p.value / portfolio.value) * 1000) / 10;
+    }
+  }
+  const positionBySymbol = new Map(positions.map((p) => [p.symbol, p]));
 
   // Still-active conditions and today's alerts.
   const activeRows = await db
@@ -313,6 +491,95 @@ export async function gatherDigest(db: Db, date: string, now = new Date()): Prom
     firstFiredOn: r.firstFiredOn,
     message: evalBy.get(r.ruleId)?.message ?? '',
   }));
+  // Needs attention: every rule that fired today (= active conditions), with alert history.
+  const states = firedToday.length
+    ? await db
+        .select()
+        .from(alertStates)
+        .where(
+          inArray(
+            alertStates.exitRuleId,
+            firedToday.map((e) => e.exitRuleId),
+          ),
+        )
+    : [];
+  const stateBy = new Map(states.map((s) => [s.exitRuleId, s]));
+  const instrumentSymbolById = new Map(lotRows.map((l) => [l.instrumentId, l.symbol]));
+  const attention: AttentionItem[] = [];
+  for (const e of firedToday) {
+    const r = ruleById.get(e.exitRuleId);
+    const sym = r ? instrumentSymbolById.get(r.instrumentId) : undefined;
+    const p = sym ? positionBySymbol.get(sym) : undefined;
+    if (!r || !r.ruleType || !p) continue;
+    const observed = e.observed;
+    const level = typeof observed.level === 'string' ? observed.level : '';
+    const tag = ruleAlertTag(
+      r.status as RuleStatus,
+      r.ruleType as RuleType,
+      {
+        kind: 'fired',
+        severity: e.severity ?? 'info',
+        level,
+        message: e.message ?? '',
+        observed,
+      } as Extract<Outcome, { kind: 'fired' }>,
+    ) as AttentionTag;
+    const st = stateBy.get(r.id);
+    const alertedToday = st?.lastAlertedOn === date;
+    const compact = COMPACT_RULE_TYPES.has(r.ruleType);
+    const sibling = rules.filter((x) => x.instrumentId === r.instrumentId);
+    const lvl = (x: (typeof rules)[number]) => (x.params as { level?: unknown }).level;
+    attention.push({
+      ruleId: r.id,
+      display: p.display,
+      symbol: p.symbol,
+      evaluatedSymbol: p.evaluatedSymbol,
+      tag,
+      status: r.status,
+      ruleType: r.ruleType,
+      level,
+      message: e.message ?? '',
+      observed,
+      escalated: alertedToday && !!st && st.firstFiredOn < date,
+      alertedToday,
+      firstFiredOn: st?.firstFiredOn ?? null,
+      close: p.close,
+      dayPct: p.dayPct,
+      compact,
+      range:
+        compact || p.close === null
+          ? null
+          : attentionRange({
+              ruleType: r.ruleType,
+              observed,
+              close: p.close,
+              stops: sibling
+                .filter((x) => x.ruleType === 'stop_close_below')
+                .map(lvl)
+                .filter((v): v is number => typeof v === 'number'),
+              takeProfits: sibling
+                .filter((x) => x.ruleType === 'take_profit_at_or_above')
+                .map(lvl)
+                .filter((v): v is number => typeof v === 'number'),
+              avgCost:
+                p.value !== null && p.shares > 0 && p.plDollars !== null
+                  ? (p.value - p.plDollars) / p.shares
+                  : null,
+            }),
+      position:
+        p.lots.length === 0
+          ? null
+          : {
+              shares: p.shares,
+              lots: p.lots.length,
+              plDollars: p.plDollars,
+              plPct: p.plPct,
+              weightPct: p.weightPct,
+            },
+    });
+  }
+  attention.sort(byAttention);
+
   const alertsToday = (
     await db
       .select({ subject: alerts.subject })
@@ -368,10 +635,78 @@ export async function gatherDigest(db: Db, date: string, now = new Date()): Prom
       .map((f) => ({ form: f.form, items: f.items, filedAt: f.filedAt, url: f.url })),
   }));
 
+  // Filings for the new layout: one item per filing; Form 4s with open-market buys/sells listed
+  // per filing, the rest grouped into one line (holdings, then the watchlist).
+  const filingList: DigestFiling[] = [];
+  for (const held of [true, false]) {
+    const form4Counts = new Map<string, number>();
+    for (const ticker of filingGroups
+      .map((g) => g.ticker)
+      .filter((t) => heldSymbols.has(t) === held)) {
+      // Notable filings (results, dilution, management change…) first, then newest first.
+      const notable = (x: (typeof fRows)[number]) => {
+        const ft = filingTitle(x.form, x.items);
+        return ft.notable || ft.dilution;
+      };
+      const rows = fRows
+        .filter((x) => x.ticker === ticker)
+        .sort((a, b) => Number(notable(b)) - Number(notable(a)));
+      for (const f of rows) {
+        const t = filingTitle(f.form, f.items);
+        if (f.form === '4' || f.form === '4/A') {
+          const s = (f.details as { form4?: Form4Summary } | null)?.form4;
+          const trades = s ? summarizeTrades(s.trades) : [];
+          if (trades.length === 0) {
+            form4Counts.set(ticker, (form4Counts.get(ticker) ?? 0) + 1);
+            continue;
+          }
+          filingList.push({
+            tickers: [ticker],
+            held,
+            title: `Form 4 · open-market ${[...new Set(trades.map((x) => (x.code === 'P' ? 'buy' : 'sale')))].join(' & ')}`,
+            itemsNote: null,
+            strong: true,
+            url: f.url,
+            filedAt: f.filedAt,
+            trades,
+          });
+          continue;
+        }
+        filingList.push({
+          tickers: [ticker],
+          held,
+          title: t.title,
+          itemsNote: t.itemsNote,
+          strong: t.notable || t.dilution,
+          url: f.url,
+          filedAt: f.filedAt,
+          trades: [],
+        });
+      }
+    }
+    if (form4Counts.size) {
+      filingList.push({
+        tickers: [...form4Counts].map(([t, n]) => (n > 1 ? `${t} ×${n}` : t)),
+        held,
+        title: 'Form 4 · insider filings · no open-market buys/sells',
+        itemsNote: null,
+        strong: false,
+        url: null,
+        filedAt: null,
+        trades: [],
+      });
+    }
+  }
+  const filingCounts = {
+    total: fRows.length,
+    earnings8k: fRows.filter((f) => filingTitle(f.form, f.items).earnings).length,
+  };
+
   const nRows = await db
     .select({
       headline: newsItems.headline,
       url: newsItems.url,
+      source: newsItems.source,
       publishedAt: newsItems.publishedAt,
       symbols: newsItems.symbols,
     })
@@ -391,6 +726,12 @@ export async function gatherDigest(db: Db, date: string, now = new Date()): Prom
     })
     .filter((h) => h.items.length)
     .sort((a, b) => order(a.ticker, b.ticker));
+
+  const heldList = [...heldSymbols].sort();
+  const headlineSelection = selectHeadlines(nRows, {
+    holdings: heldList,
+    watchlist: tickers.filter((t) => !heldSymbols.has(t)),
+  });
 
   const feedIssues = (await db.select().from(feedStatus))
     .filter((f) => !f.feed.includes(':') && (f.status === 'degraded' || f.status === 'down'))
@@ -444,202 +785,19 @@ export async function gatherDigest(db: Db, date: string, now = new Date()): Prom
     feedIssues,
     rulesToWrite,
     needsInput,
+    portfolio,
+    attention,
+    levelsToWatch: levelsToWatch(levelInputs, { ...WATCH_WITHIN, asOfDate: date }),
+    filingList,
+    filingCounts,
+    headlineSelection,
+    alertMix: alertsToday.reduce<Partial<Record<AttentionTag, number>>>((acc, subject) => {
+      const tag = /\[AIA\] (ACTION|WARNING|REVIEW|REMINDER)\b/.exec(subject)?.[1] as
+        AttentionTag | undefined;
+      if (tag) acc[tag] = (acc[tag] ?? 0) + 1;
+      return acc;
+    }, {}),
   };
-}
-
-// ------------------------------------------------------------------------------------------------
-// Rendering (pure)
-// ------------------------------------------------------------------------------------------------
-
-const fmtDate = (date: string) =>
-  new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  });
-
-function levelText(l: DigestLevel | null, kind: 'stop' | 'tp') {
-  if (!l) return '—';
-  const where =
-    kind === 'stop'
-      ? l.distPct >= 0
-        ? `${l.distPct.toFixed(1)}% above`
-        : `${Math.abs(l.distPct).toFixed(1)}% BELOW`
-      : l.distPct >= 0
-        ? `${l.distPct.toFixed(1)}% away`
-        : `${Math.abs(l.distPct).toFixed(1)}% PAST`;
-  const tag = l.status === 'CONFIRMED' ? '' : ` [${l.status.toLowerCase()}]`;
-  return `${l.label} ${money(l.level)} (${where})${tag}`;
-}
-
-function lotsText(p: DigestPosition) {
-  return p.lots
-    .map(
-      (l) =>
-        `${ACCOUNT_LABEL[l.account] ?? l.account} ${l.quantity} @ ${money(l.avgCost)}${
-          l.pctVsCost === null ? '' : ` (${signedPct(l.pctVsCost)})`
-        }${l.unconfirmed ? ' (unconfirmed)' : ''}`,
-    )
-    .join(' · ');
-}
-
-function closeText(p: DigestPosition) {
-  if (p.noData) return 'not checked: no data source';
-  if (p.close === null) return 'no bar';
-  const und = p.isOption ? ` (${p.evaluatedSymbol})` : '';
-  return `${money(p.close)}${und} ${signedPct(p.dayPct)}`;
-}
-
-export function renderDigest(d: DigestData) {
-  const subject = `[AIA] DIGEST ${fmtDate(d.date)}${
-    d.active.length
-      ? `: ${d.active.length} active condition${d.active.length === 1 ? '' : 's'}`
-      : ''
-  }`;
-  const t: string[] = [];
-  const h: string[] = [];
-  const section = (title: string) => {
-    t.push('', title.toUpperCase(), '-'.repeat(title.length));
-    h.push(`<h3 style="margin:20px 0 6px;border-bottom:1px solid #ddd">${escapeHtml(title)}</h3>`);
-  };
-  const td = (s: string, extra = '') =>
-    `<td style="padding:3px 8px;vertical-align:top;border-bottom:1px solid #f0f0f0${extra}">${s}</td>`;
-
-  t.push(
-    `Daily digest for the ${d.date} close. News and filings from ${ptTime(d.since)} to ${ptTime(d.until)}.`,
-  );
-  h.push(
-    `<p>Daily digest for the <strong>${escapeHtml(fmtDate(d.date))}</strong> close. News and filings from ${escapeHtml(ptTime(d.since))} to ${escapeHtml(ptTime(d.until))}.</p>`,
-  );
-
-  if (d.feedIssues.length) {
-    section('Feed problems');
-    for (const f of d.feedIssues) {
-      t.push(`! ${f.feed}: ${f.status} since ${ptTime(f.since)} (${f.detail ?? ''})`);
-    }
-    h.push(
-      `<ul>${d.feedIssues.map((f) => `<li><strong>${escapeHtml(f.feed)}</strong>: ${escapeHtml(f.status)} since ${escapeHtml(ptTime(f.since))} (${escapeHtml(f.detail ?? '')})</li>`).join('')}</ul>`,
-    );
-  }
-
-  section('Positions');
-  h.push(
-    `<table style="border-collapse:collapse;font-size:13px"><tr style="text-align:left;color:#555">${['Holding', 'Close (day)', 'Lots (vs cost)', 'Nearest stop', 'Nearest take-profit'].map((c) => td(`<strong>${c}</strong>`)).join('')}</tr>`,
-  );
-  for (const p of d.positions) {
-    t.push(
-      `${p.display}: ${closeText(p)} | ${lotsText(p)} | ${levelText(p.stop, 'stop')} | ${levelText(p.takeProfit, 'tp')}`,
-    );
-    h.push(
-      `<tr>${td(`<strong>${escapeHtml(p.display)}</strong>`)}${td(escapeHtml(closeText(p)), ';white-space:nowrap')}${td(escapeHtml(lotsText(p)))}${td(escapeHtml(levelText(p.stop, 'stop')))}${td(escapeHtml(levelText(p.takeProfit, 'tp')))}</tr>`,
-    );
-  }
-  h.push('</table>');
-  if (d.positions.some((p) => p.isOption)) {
-    t.push(
-      'Options: close shown is the underlying; % vs cost needs option prices (not collected).',
-    );
-    h.push(
-      '<p style="color:#555;font-size:12px">Options: close shown is the underlying; % vs cost needs option prices (not collected).</p>',
-    );
-  }
-
-  section(`Still-active conditions (${d.active.length})`);
-  if (d.active.length === 0) {
-    t.push('None.');
-    h.push('<p>None.</p>');
-  } else {
-    for (const a of d.active)
-      t.push(`- ${a.display} [${a.status}] ${a.level} since ${a.firstFiredOn}: ${a.message}`);
-    h.push(
-      `<ul>${d.active.map((a) => `<li><strong>${escapeHtml(a.display)}</strong> <span style="color:#555">[${escapeHtml(a.status)}] since ${escapeHtml(a.firstFiredOn)}</span>: ${escapeHtml(a.message)}</li>`).join('')}</ul>`,
-    );
-  }
-
-  if (d.alertsToday.length) {
-    section('Alerts sent for this close');
-    for (const s of d.alertsToday) t.push(`- ${s}`);
-    h.push(`<ul>${d.alertsToday.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ul>`);
-  }
-
-  section('Rules not checked');
-  if (d.notChecked.length === 0) {
-    t.push('All machine-checkable rules were checked.');
-    h.push('<p>All machine-checkable rules were checked.</p>');
-  } else {
-    for (const n of d.notChecked) t.push(`- ${n.reason}: ${n.items.join(', ')}`);
-    h.push(
-      `<ul>${d.notChecked.map((n) => `<li><strong>${escapeHtml(n.reason)}</strong>: ${escapeHtml(n.items.join(', '))}</li>`).join('')}</ul>`,
-    );
-  }
-
-  section('New filings');
-  if (d.filings.length === 0) {
-    t.push('None.');
-    h.push('<p>None.</p>');
-  } else {
-    for (const g of d.filings) {
-      for (const f of g.items) {
-        t.push(
-          `- ${g.ticker} ${f.form}${f.items.length ? ` (items ${f.items.join(', ')})` : ''} ${ptTime(f.filedAt)} ${f.url}`,
-        );
-      }
-    }
-    h.push(
-      `<ul>${d.filings.flatMap((g) => g.items.map((f) => `<li><strong>${escapeHtml(g.ticker)}</strong> <a href="${escapeHtml(f.url)}">${escapeHtml(f.form)}</a>${f.items.length ? ` (items ${escapeHtml(f.items.join(', '))})` : ''} <span style="color:#555">${escapeHtml(ptTime(f.filedAt))}</span></li>`)).join('')}</ul>`,
-    );
-  }
-
-  section('Headlines');
-  if (d.headlines.length === 0) {
-    t.push('None.');
-    h.push('<p>None.</p>');
-  } else {
-    for (const g of d.headlines) {
-      t.push(`${g.ticker}:`);
-      for (const n of g.items) t.push(`  - ${n.headline}${n.url ? ` ${n.url}` : ''}`);
-      if (g.more) t.push(`  (+${g.more} more)`);
-    }
-    h.push(
-      d.headlines
-        .map(
-          (g) =>
-            `<p style="margin:10px 0 2px"><strong>${escapeHtml(g.ticker)}</strong></p><ul style="margin-top:0">${g.items
-              .map(
-                (n) =>
-                  `<li>${n.url ? `<a href="${escapeHtml(n.url)}">${escapeHtml(n.headline)}</a>` : escapeHtml(n.headline)}</li>`,
-              )
-              .join('')}${g.more ? `<li style="color:#555">+${g.more} more</li>` : ''}</ul>`,
-        )
-        .join(''),
-    );
-  }
-
-  if (d.weekly) {
-    section('Weekly: rules to write');
-    if (d.rulesToWrite.length === 0) {
-      t.push('None.');
-      h.push('<p>None.</p>');
-    } else {
-      for (const r of d.rulesToWrite) t.push(`- ${r.display}: ${r.purposes.join(', ')}`);
-      h.push(
-        `<ul>${d.rulesToWrite.map((r) => `<li><strong>${escapeHtml(r.display)}</strong>: ${escapeHtml(r.purposes.join(', '))}</li>`).join('')}</ul>`,
-      );
-    }
-    section('Weekly: missing input');
-    if (d.needsInput.length === 0) {
-      t.push('None.');
-      h.push('<p>None.</p>');
-    } else {
-      for (const n of d.needsInput) t.push(`- ${n}`);
-      h.push(`<ul>${d.needsInput.map((n) => `<li>${escapeHtml(n)}</li>`).join('')}</ul>`);
-    }
-  }
-
-  t.push('', `Generated ${ptTime(d.generatedAt)}.`);
-  h.push(`<p style="color:#555">Generated ${escapeHtml(ptTime(d.generatedAt))}.</p>`);
-  return { subject, text: t.join('\n').trimStart(), html: htmlDoc(subject, h.join('\n')) };
 }
 
 /** The session whose digest should go out now (trading day, 2:15 PM PT passed, not yet sent). */

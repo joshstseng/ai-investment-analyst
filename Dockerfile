@@ -16,6 +16,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/worker/package.json apps/worker/
 COPY packages/core/package.json packages/core/
 COPY packages/db/package.json packages/db/
+COPY packages/emails/package.json packages/emails/
 RUN pnpm install --frozen-lockfile --prod
 
 # Source and migrations. .dockerignore keeps out .env, data/ (holdings), node_modules and git.

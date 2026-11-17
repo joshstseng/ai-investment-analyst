@@ -9,17 +9,25 @@
  *   pnpm collect filings [--days 30]     (EDGAR; --days > 1 is recorded as a backfill)
  *   pnpm collect earnings                (Alpha Vantage earnings calendar; ≤ 2 calls/day)
  *   pnpm collect events [--force]        (rules/derived, dividends/splits, econ calendar; list upcoming)
- *   pnpm collect morning [--dry-run|--send] [--as-of ISO]  (morning email)
+ *   pnpm collect morning [--dry-run|--send] [--html f] [--test-send] [--as-of ISO]  (morning email)
  *   pnpm collect levels [--as-of ISO]    (pre-market prices + levels to watch)
  *   pnpm collect check [--date YYYY-MM-DD]  (evaluate rules for the latest completed session)
  *   pnpm collect due                     (run the close check if one is due)
  *   pnpm collect health [--alert]        (feed health pass; --alert emails failures/recoveries)
- *   pnpm collect digest [--date D] [--send] (preview the digest; --send runs the real job if due)
+ *   pnpm collect digest [--date D] [--dry-run] [--html out.html] [--json] [--test-send] [--send]
+ *       (preview the digest: plain text, or HTML written to a file plus .preview/digest-props.json
+ *        for `pnpm email:preview`; --test-send emails a one-off copy; --send runs the real job if due)
+ *   pnpm collect alert --ticker T [--date D] [--html f] [--test-send]
+ *       (preview the alert email for a rule that fired on that date)
+ *   pnpm collect health-email [--feed F] [--recovery] [--html f] [--test-send]
+ *       (preview a simulated HEALTH email; test sends say "(test)")
  *   pnpm collect alerts                  (last 20 alerts and their send status)
  *   pnpm collect test-email              (send one test message)
  *   pnpm collect schedule                (show the cron schedule and next runs, PT)
  *   pnpm collect status                  (coverage + feed latency report)
  */
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { events as eventsTable, filings, newsItems, pricesDaily, symbolDataStatus } from '@aia/db';
 import { nyDate } from '@aia/core';
@@ -37,7 +45,10 @@ import { renderMorning } from './morning/render';
 import { enqueueAlert } from './notify/outbox';
 import { NewsStreamManager } from './news/run-stream';
 import { runFeedHealth } from './health/run';
-import { gatherDigest, renderDigest } from './notify/digest';
+import { gatherDigest } from './notify/digest';
+import { composeDigest } from './notify/digest-email';
+import { composeHealthAlert } from './notify/health-alerts';
+import { previewRuleAlert } from './notify/rule-alerts';
 import { alerts } from '@aia/db';
 import { digestJob, drainOutbox, earningsJob, eventsRefreshJob, outboxJob } from './schedule/jobs';
 import { latestCompletedSession } from './rules/check';
@@ -59,11 +70,55 @@ const { positionals, values } = parseArgs({
     force: { type: 'boolean', default: false },
     send: { type: 'boolean', default: false },
     alert: { type: 'boolean', default: false },
+    json: { type: 'boolean', default: false },
+    html: { type: 'string' },
+    'test-send': { type: 'boolean', default: false },
+    ticker: { type: 'string' },
+    feed: { type: 'string', default: 'alpaca_news_stream' },
+    recovery: { type: 'boolean', default: false },
   },
 });
 const command = positionals[0];
 const ctx = createContext();
 const { db, alpaca, env } = ctx;
+
+/**
+ * --html <file>: writes the HTML (and .preview/<name>-props.json for `pnpm email:preview`);
+ * --test-send: emails a one-off copy under a unique dedupe key; otherwise prints the text.
+ */
+async function previewOrSend(
+  name: string,
+  msg: { subject: string; html: string; text: string; props: unknown },
+) {
+  if (values.html) {
+    // Paths are relative to where `pnpm collect` was run (pnpm runs the script in apps/worker).
+    const root = process.env.INIT_CWD ?? process.cwd();
+    const out = resolve(root, values.html);
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, msg.html);
+    const props = resolve(root, `.preview/${name}-props.json`);
+    mkdirSync(dirname(props), { recursive: true });
+    writeFileSync(props, JSON.stringify(msg.props, null, 2));
+    console.log(
+      `wrote ${out} (${(Buffer.byteLength(msg.html) / 1024).toFixed(1)} KB) and ${props}`,
+    );
+  }
+  if (values['test-send']) {
+    await enqueueAlert(db, {
+      dedupeKey: `${name}-test:${new Date().toISOString()}`,
+      kind: 'test',
+      severity: 'info',
+      channel: 'email',
+      subject: msg.subject,
+      body: msg.text,
+      html: msg.html,
+    });
+    const res = await outboxJob(ctx);
+    console.log(`queued test ${name} "${msg.subject}"; outbox: ${JSON.stringify(res)}`);
+    return;
+  }
+  if (!values.html) console.log(`Subject: ${msg.subject}\n\n${msg.text}`);
+}
 
 try {
   switch (command) {
@@ -142,12 +197,16 @@ try {
       break;
     }
     case 'morning': {
-      // --dry-run (default): print the email. --send: send it now (a one-off key, so the
-      // scheduled 5:45 AM email still goes out). --as-of: render as of another time.
+      // --dry-run (default): print the email; --html f / --test-send as for the digest.
+      // --send: send it now as a real morning email (a one-off key, so the scheduled 5:45 AM
+      // email still goes out). --as-of: render as of another time.
       const now = values['as-of'] ? new Date(values['as-of']) : new Date();
-      const msg = renderMorning(await gatherMorning(db, alpaca, now));
+      const msg = await renderMorning(await gatherMorning(db, alpaca, now));
       if (!values.send) {
-        console.log(`Subject: ${msg.subject}\n\n${msg.text}`);
+        await previewOrSend(
+          'morning',
+          values['test-send'] ? { ...msg, subject: `${msg.subject} (test)` } : msg,
+        );
         break;
       }
       await enqueueAlert(db, {
@@ -204,8 +263,56 @@ try {
       // Preview only: print the plain-text digest for a session (default: latest completed).
       const date = values.date ?? (await latestCompletedSession(db));
       if (!date) throw new Error('no completed session');
-      const msg = renderDigest(await gatherDigest(db, date));
-      console.log(`Subject: ${msg.subject}\n\n${msg.text}`);
+      const data = await gatherDigest(db, date);
+      if (values.json) {
+        console.log(JSON.stringify(data, null, 2));
+        break;
+      }
+      const msg = await composeDigest(data, { barsFeed: env.ALPACA_BARS_FEED });
+      await previewOrSend(
+        'digest',
+        values['test-send'] ? { ...msg, subject: `${msg.subject} (test)` } : msg,
+      );
+      break;
+    }
+    case 'alert': {
+      if (!values.ticker) throw new Error('--ticker is required');
+      const date = values.date ?? (await latestCompletedSession(db));
+      if (!date) throw new Error('no completed session');
+      const res = await previewRuleAlert(db, values.ticker, date);
+      if (!res.msg) {
+        console.log(
+          `no rule fired for ${values.ticker} on ${date}; fired: ${res.fired.join(', ') || 'none'} (run \`pnpm collect check --date ${date}\` first if needed)`,
+        );
+        break;
+      }
+      await previewOrSend('alert', { ...res.msg, subject: `${res.msg.subject} (test)` });
+      break;
+    }
+    case 'health-email': {
+      const now = new Date();
+      const recovery = values.recovery;
+      const msg = await composeHealthAlert(
+        {
+          feed: values.feed,
+          kind: recovery ? 'recovery' : 'failure',
+          from: recovery ? 'down' : 'ok',
+          to: recovery ? 'ok' : 'down',
+          detail: recovery ? 'connected' : 'simulated outage (preview)',
+        },
+        now,
+        {
+          since: recovery ? new Date(now.getTime() - 95 * 60_000) : now,
+          others: [
+            'alpaca_news_stream',
+            'alpaca_quotes',
+            'alpaca_bars',
+            'sec_edgar',
+            'scheduler',
+          ].map((feed) => ({ feed, status: 'ok' as const })),
+        },
+      );
+      await previewOrSend('health', { ...msg, subject: `${msg.subject} (test)` });
       break;
     }
     case 'alerts': {

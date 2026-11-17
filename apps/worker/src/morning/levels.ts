@@ -1,4 +1,7 @@
-/** Loads holdings, their price rules and prices, and computes levels to watch (see @aia/core). */
+/**
+ * Loads holdings, their price rules and prices as level inputs (shared by the morning email and
+ * the digest), and computes levels to watch (see @aia/core): within 5%, or 8% for 52-week lows.
+ */
 import {
   addDays,
   levelsToWatch,
@@ -7,16 +10,26 @@ import {
   type RuleStatus,
 } from '@aia/core';
 import { exitRules, holdings, instruments, pricesDaily, ruleEvaluations, type Db } from '@aia/db';
-import { and, desc, eq, gt, inArray, lte, max, ne } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, lt, lte, max, min, ne } from 'drizzle-orm';
 
 const LEVEL_RULE_TYPES = [
   'stop_close_below',
   'take_profit_at_or_above',
   'trailing_close_pct_from_high',
   'etf_drawdown_from_52w_high',
+  'close_below_cost',
+  'new_52w_low',
 ] as const;
 
-export async function loadLevels(db: Db, asOfDate: string, withinPct = 5): Promise<LevelToWatch[]> {
+/** 52-week lows are watched from further away (speculative names move more). */
+export const WATCH_WITHIN = { withinPct: 5, withinPctByKind: { low_52w: 8 } } as const;
+
+export async function loadLevels(db: Db, asOfDate: string): Promise<LevelToWatch[]> {
+  return levelsToWatch(await loadLevelInputs(db, asOfDate), { ...WATCH_WITHIN, asOfDate });
+}
+
+/** Level inputs per held instrument, keyed for lookup by instrument symbol. */
+export async function loadLevelInputs(db: Db, asOfDate: string): Promise<LevelInstrumentInput[]> {
   const held = await db
     .selectDistinct({
       id: instruments.id,
@@ -83,6 +96,29 @@ export async function loadLevels(db: Db, asOfDate: string, withinPct = 5): Promi
     for (const r of rows) if (r.high) highs.set(r.symbol, Number(r.high));
   }
 
+  // new_52w_low rules: the lowest close in the 52 weeks before the as-of day.
+  const lows = new Map<string, number>();
+  const needLow = held.filter((h) =>
+    rules.some((r) => r.instrumentId === h.id && r.ruleType === 'new_52w_low'),
+  );
+  if (needLow.length) {
+    const rows = await db
+      .select({ symbol: pricesDaily.symbol, low: min(pricesDaily.close) })
+      .from(pricesDaily)
+      .where(
+        and(
+          inArray(
+            pricesDaily.symbol,
+            needLow.map((h) => h.underlying ?? h.symbol),
+          ),
+          gt(pricesDaily.date, addDays(asOfDate, -365)),
+          lt(pricesDaily.date, asOfDate),
+        ),
+      )
+      .groupBy(pricesDaily.symbol);
+    for (const r of rows) if (r.low) lows.set(r.symbol, Number(r.low));
+  }
+
   // Trailing stops: the trigger level from each rule's latest evaluation (null until started).
   const triggers = new Map<number, number>();
   const trailing = rules.filter((r) => r.ruleType === 'trailing_close_pct_from_high');
@@ -97,7 +133,7 @@ export async function loadLevels(db: Db, asOfDate: string, withinPct = 5): Promi
     if (typeof level === 'number') triggers.set(r.id, level);
   }
 
-  const inputs: LevelInstrumentInput[] = held.map((h) => {
+  return held.map((h) => {
     const evaluatedSymbol = h.underlying ?? h.symbol;
     return {
       display: h.type === 'option' && h.name ? h.name : h.symbol,
@@ -105,6 +141,7 @@ export async function loadLevels(db: Db, asOfDate: string, withinPct = 5): Promi
       evaluatedSymbol,
       close: closes.get(evaluatedSymbol) ?? null,
       high52w: highs.get(evaluatedSymbol) ?? null,
+      low52w: lows.get(evaluatedSymbol) ?? null,
       rules: rules
         .filter((r) => r.instrumentId === h.id)
         .map((r) => ({
@@ -115,5 +152,4 @@ export async function loadLevels(db: Db, asOfDate: string, withinPct = 5): Promi
         })),
     };
   });
-  return levelsToWatch(inputs, { withinPct, asOfDate });
 }

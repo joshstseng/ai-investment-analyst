@@ -268,6 +268,8 @@ export const exitRules = pgTable(
     status: ruleStatusEnum('status').notNull(),
     /** Text included in every alert this rule sends (e.g. "only if the catalyst is confirmed"). */
     alertNote: text('alert_note'),
+    /** CONFIRMED rules: the planned action shown in alerts, e.g. "Sell 3 of 9 shares". */
+    planAction: text('plan_action'),
     /** Free-text conditions that need judgment rather than a price check. */
     thesisBreakTriggers: text('thesis_break_triggers'),
     /** Verbatim text the rule was parsed from, for traceability. */

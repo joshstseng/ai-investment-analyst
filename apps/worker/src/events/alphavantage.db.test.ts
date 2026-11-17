@@ -140,8 +140,8 @@ describe.skipIf(!url)('Alpha Vantage sync (Postgres)', () => {
         (a) => a.subject,
       );
       expect(subjects).toEqual([
-        '[AIA] HEALTH Earnings calendar (Alpha Vantage): down',
-        '[AIA] HEALTH Earnings calendar (Alpha Vantage): recovered',
+        '🩺 [AIA] HEALTH Earnings calendar (Alpha Vantage): down',
+        '🩺 [AIA] HEALTH Earnings calendar (Alpha Vantage): recovered',
       ]);
       const [status] = await tx.select().from(feedStatus).where(eq(feedStatus.feed, EARNINGS_FEED));
       expect(status!.status).toBe('ok');

@@ -7,3 +7,5 @@ export * from './alerts';
 export * from './events';
 export * from './filings';
 export * from './levels';
+export * from './headlines';
+export * from './portfolio';

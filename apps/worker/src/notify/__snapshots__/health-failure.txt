@@ -1,0 +1,15 @@
+HEALTH · News stream (Alpaca): down
+
+News stream (Alpaca) is down.
+Since: Mon, Nov 16, 1:20 PM PST
+Detail: disconnected since 2026-11-16T17:42:00.000Z (connection limit exceeded)
+Checked: Mon, Nov 16, 1:20 PM PST
+
+Affected: Real-time headlines. News still arrives through the regular REST polls, just later.
+Still working: Daily bars (Alpaca), SEC EDGAR filings
+
+You'll get one more email when it recovers. No repeat emails while it stays down.
+
+--
+Feed: alpaca_news_stream · ok → down
+AI Investment Analyst · research and alerts only, no trading

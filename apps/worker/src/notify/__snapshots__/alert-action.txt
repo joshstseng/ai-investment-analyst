@@ -1,0 +1,16 @@
+ACTION · BKX · $44.10 −4.2% today
+Bookings Example Corp · Roth IRA
+
+Closed below stop
+BKX closed at $44.10, below the $45.00 stop.
+Range: stop $45.00 … take-profit $60.00 (price at 0%)
+
+Position: Position 20 sh @ $50.00 · Value $882 · P/L −$118 · −11.8%
+
+Plan: Exit all 20 shares on a daily close below $45.00.
+Also check: Guidance cut or loss of the key contract.
+
+--
+Rule: stop_close_below · CONFIRMED · risk stop
+As of the Mon, Nov 16 close · sent Mon, Nov 16, 1:20 PM PST
+AI Investment Analyst · research and alerts only, no trading

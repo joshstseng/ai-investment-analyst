@@ -12,3 +12,7 @@ coverage/
 # Personal holdings data — never commit
 data/seed/*
 !data/seed/.gitkeep
+
+# Email previews and mockups (built from real holdings data) — never commit
+docs/email-mockup.html
+.preview/

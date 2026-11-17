@@ -20,7 +20,7 @@ Personal AI investment research assistant for one user. Research and alerts only
   - ForexFactory weekly JSON (unofficial, optional): USD High/Medium economic events. No HEALTH alert if it fails.
   - FRED, later.
 - **Alerts:** email and, later, in-app/web push. **No SMS.** On Railway, email goes through **Resend's HTTPS API** (`RESEND_API_KEY`) because the Hobby plan blocks outbound SMTP; Gmail SMTP (app password, nodemailer) is the local fallback.
-- **Emails:** instant alerts (`[AIA] ACTION/WARNING/REVIEW/REMINDER/HEALTH`), the **daily digest** after the close (`[AIA] DIGEST`), and the **weekday morning email** at 5:45 AM PT (`[AIA] MORNING`; a "weekend recap + week ahead" on the first trading day of the week, a short "market closed" version on holidays). Code: `apps/worker/src/morning/`.
+- **Emails:** instant alerts (`‼️ [AIA] ACTION`, `⚠️ WARNING`, `📝 REVIEW`, `💡 REMINDER`, `🩺 HEALTH`), the **daily digest** at 2:15 PM PT on trading days (`📊 [AIA] DIGEST Nov 16 · −2.5% · 4 alerts`), and the **weekday morning email** at 5:45 AM PT (`☀️ [AIA] MORNING …`; `🗓️` "weekend recap + week ahead" on the first trading day of the week; a "market closed" version on holidays). `📰 [AIA] NEWS` is reserved for Step 2. The digest and morning email share one section order: alerts → filings → headlines → prices (positions / pre-market) → levels to watch → still-active conditions → the rest.
 - **Events** (`events` table) are maintained automatically, never by hand: a one-time seed from `data/seed/events.csv`; earnings from Alpha Vantage; dividends/splits from Alpaca; reminders from `date_reminder` rules; option expiries and estimated IPO lockups (first trading day + 180 days) derived from our data. Each row has a `source` and a unique `source_ref`; a changed date is recorded (`previous_date`, `history`), not overwritten. Precedence between sources is a pure function (`reconcileEvents` in `@aia/core`): a seeded event beats a derived/rule one within ±3 days; Alpha Vantage replaces an unconfirmed seeded earnings estimate within ±45 days; a confirmed seeded date absorbs Alpha Vantage's within ±3 days. Losers are kept as `superseded`. A future AI step can insert `source=ai_extracted` events, which require `confidence` and `source_url`. Market-wide economic events live in `econ_events`.
 - **AI:** Claude API (API key, billed separately from the user's Claude Pro subscription).
   - Haiku: news triage
@@ -29,6 +29,19 @@ Personal AI investment research assistant for one user. Research and alerts only
   - The heavy briefs stay on Pro scheduled tasks for now (hybrid).
   - Hard spend cap: $50/month.
 - **Budget:** about $30–70/month all-in to start.
+
+## Email design system (`packages/emails`)
+
+- **React Email** (`@react-email/components`) templates rendered to HTML in the worker; every email also has a hand-written plain-text part built from the same props. Visual reference: `docs/email-mockup.html` (local only, gitignored: it holds real positions).
+- **Layers:** a pure **view model** in the worker turns gathered data into JSON-safe props (`notify/digest-email.ts`, `notify/rule-alerts.ts`, `notify/health-alerts.ts`, `morning/render.ts`); the **templates** in `packages/emails/src/emails/` only lay props out. Put math and wording in the view model (unit-tested), not in components. Pure portfolio/headline logic lives in `@aia/core` (`portfolio.ts`, `headlines.ts`, `levels.ts`, `filings.ts`).
+- **Components** (`packages/emails/src/components/`): `EmailShell`, `Header` (navy band; severity pill + large ticker for alerts), `KpiTiles`, `AttentionCard` (full or compact), `RangeBar`, `Pill`/`SeverityPill`, `PositionsTable`, `FilingsList`, `HeadlinesList`, `Footer`, plus `Section`, `Box` (gray / Plan) and `Note`.
+- **Email-safe rules:** tables only, inline styles, 640px max, system fonts; no images, SVG, scripts or external CSS. Colors are tokens in `tokens.ts` (gain #16a34a, loss #dc2626, warning #d97706, review #2563eb, action #dc2626, reminder #7c3aed, muted #5b6577). Dark mode: `color-scheme: light`, `bgcolor` fallbacks, and the Gmail iOS blend fix on white header text. Phones (≤600px) hide secondary columns (`hide-sm`).
+- **Size:** `renderHtml` refuses HTML over 90 KB (Gmail clips at ~102 KB); the digest falls back to a trimmed version (one-line cards, capped filings/headlines) instead of failing.
+- **Every `.tsx` file starts with** `/** @jsxRuntime automatic @jsxImportSource react */` (tsx compiles files outside the worker without its tsconfig).
+- **Previews:** `pnpm email:preview` (dev server on :3030; reads `.preview/<name>-props.json` written by the CLI, else the made-up samples in `packages/emails/preview/`). `pnpm collect digest|morning|alert --ticker T|health-email … [--html f] [--test-send]` writes HTML or emails a copy marked "(test)".
+- **Tests:** snapshot tests per email type plus unit tests for the view models, with made-up tickers and numbers only (`notify/digest-fixture.ts`). Update snapshots with `pnpm vitest run -u` after an intended change.
+- **Headlines (no AI yet):** dedupe by URL or near-identical title within 24 h; noise filter = `NOISE_PATTERNS` in `@aia/core` plus stories tagged with 5+ tickers; holdings ranked by holdings mentioned, then recency (digest 6, morning 6/10 on recap days); watchlist as one summary line.
+- **Alerts' Plan box:** CONFIRMED rules show `plan_action` (seed-overrides `plan_action`, column `exit_rules.plan_action`), else a generic line from the rule; DRAFT/PLACEHOLDER say "review the position" and note when no exit rule is confirmed.
 
 ## Build order
 

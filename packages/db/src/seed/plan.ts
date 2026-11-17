@@ -87,6 +87,7 @@ export interface RulePlan {
   status: RuleStatus;
   thesisBreakTriggers: string | null;
   alertNote: string | null;
+  planAction: string | null;
   sourceText: string | null;
   confirmedAt: string | null;
   notes: string | null;
@@ -350,6 +351,7 @@ export function buildSeedPlan(input: SeedInput): SeedPlan {
         // Untyped rules are judgment rules: their text is the trigger description.
         thesisBreakTriggers: placeholder ? null : cell.text,
         alertNote: null,
+        planAction: null,
         sourceText: cell.text,
         confirmedAt: cell.confirmedAt,
         notes: null,
@@ -378,6 +380,7 @@ export function buildSeedPlan(input: SeedInput): SeedPlan {
       thesisBreakTriggers:
         o.thesis_break_triggers ?? (o.rule_type ? null : (existing?.thesisBreakTriggers ?? null)),
       alertNote: o.alert_note ?? null,
+      planAction: o.plan_action ?? null,
       sourceText: existing?.sourceText ?? null,
       confirmedAt: o.confirmed_at ?? existing?.confirmedAt ?? null,
       notes: o.notes ?? null,
@@ -403,6 +406,7 @@ export function buildSeedPlan(input: SeedInput): SeedPlan {
         status: 'PLACEHOLDER',
         thesisBreakTriggers: null,
         alertNote: null,
+        planAction: null,
         sourceText: null,
         confirmedAt: null,
         notes: 'default rule',

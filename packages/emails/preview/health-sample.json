@@ -1,0 +1,28 @@
+{
+  "subject": "🩺 [AIA] HEALTH News stream (Alpaca): down",
+  "preview": "down since Mon, Nov 16, 1:20 PM PST · Real-time headlines",
+  "feedName": "News stream (Alpaca)",
+  "kind": "failure",
+  "statusLabel": "down",
+  "lead": "News stream (Alpaca) is down.",
+  "facts": [
+    {
+      "label": "Since",
+      "value": "Mon, Nov 16, 1:20 PM PST"
+    },
+    {
+      "label": "Detail",
+      "value": "disconnected since 2026-11-16T17:42:00.000Z (connection limit exceeded)"
+    },
+    {
+      "label": "Checked",
+      "value": "Mon, Nov 16, 1:20 PM PST"
+    }
+  ],
+  "impact": "Real-time headlines. News still arrives through the regular REST polls, just later.",
+  "stillWorks": "Daily bars (Alpaca), SEC EDGAR filings",
+  "next": "You'll get one more email when it recovers. No repeat emails while it stays down.",
+  "footer": [
+    "Feed: alpaca_news_stream · ok → down"
+  ]
+}

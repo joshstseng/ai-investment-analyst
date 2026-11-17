@@ -1,0 +1,46 @@
+{
+  "subject": "📝 [AIA] REVIEW SPCQ: new 52-week closing low (further move)",
+  "preview": "$4.20 −5.4% · position −47.5%",
+  "severity": "review",
+  "ticker": "SPCQ",
+  "subtitle": "Spec Quantum Inc · Roth IRA",
+  "price": "$4.20",
+  "changePct": -5.40540540540541,
+  "priceNote": null,
+  "title": "New 52-week closing low",
+  "body": "SPCQ closed at $4.20, a new 52-week closing low (previous low $4.50). A further 2%+ move since the last alert ($4.35 → $4.20).",
+  "range": {
+    "left": "low $4.20",
+    "right": "cost $8.00",
+    "markerPct": 0
+  },
+  "position": {
+    "cells": [
+      {
+        "label": "Position",
+        "value": "50 sh @ $8.00"
+      },
+      {
+        "label": "Value",
+        "value": "$210"
+      },
+      {
+        "label": "P/L",
+        "value": "−$190 · −47.5%",
+        "tone": "loss"
+      }
+    ],
+    "lots": [],
+    "note": null
+  },
+  "plan": [
+    {
+      "label": "Plan",
+      "text": "Review the position. This is a PLACEHOLDER rule, so there's no confirmed exit plan yet. No exit rules are confirmed for SPCQ; consider writing one."
+    }
+  ],
+  "footer": [
+    "Rule: new_52w_low · PLACEHOLDER · risk stop",
+    "As of the Mon, Nov 16 close · sent Mon, Nov 16, 1:20 PM PST"
+  ]
+}

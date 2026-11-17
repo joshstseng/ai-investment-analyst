@@ -19,7 +19,8 @@ import { gatherMorning } from '../morning/gather';
 import { renderMorning } from '../morning/render';
 import { morningDueDate } from '../morning/window';
 import { ECON_JOB, econCalendarJob } from '../events/econ-calendar';
-import { digestDue, gatherDigest, renderDigest } from '../notify/digest';
+import { digestDue, gatherDigest } from '../notify/digest';
+import { composeDigest } from '../notify/digest-email';
 import { enqueueAlert, sendPending } from '../notify/outbox';
 import { processRuleAlerts } from '../notify/rule-alerts';
 import { log } from '../lib/log';
@@ -155,7 +156,9 @@ export async function digestJob(ctx: Context, now = new Date()) {
   const due = digestDue(sessions, now, await lastDigestDate(ctx));
   if (!due) return 'not due';
   await runJob(ctx.db, 'digest', async () => {
-    const msg = renderDigest(await gatherDigest(ctx.db, due, now));
+    const msg = await composeDigest(await gatherDigest(ctx.db, due, now), {
+      barsFeed: ctx.env.ALPACA_BARS_FEED,
+    });
     const id = await enqueueAlert(ctx.db, {
       dedupeKey: `digest:${due}`,
       kind: 'digest',
@@ -234,7 +237,7 @@ export async function morningJob(ctx: Context, now = new Date()) {
   const due = morningDueDate(now, await lastMorningDate(ctx), laDate(now));
   if (!due) return 'not due';
   await runJob(ctx.db, 'morning_email', async () => {
-    const msg = renderMorning(await gatherMorning(ctx.db, ctx.alpaca, now));
+    const msg = await renderMorning(await gatherMorning(ctx.db, ctx.alpaca, now));
     const id = await enqueueAlert(ctx.db, {
       dedupeKey: `morning:${due}`,
       kind: 'morning',

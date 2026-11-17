@@ -1,0 +1,352 @@
+{
+  "subject": "📊 [AIA] DIGEST Nov 16 · −3.0% · 4 alerts",
+  "preview": "CNFX at warning level · ETFX 17.5% off high · IDXQ 13.2% off high · ACMX results 8-K",
+  "subtitle": "Mon, Nov 16 · close · news & filings since Fri 2:15 PM PT",
+  "kpis": [
+    {
+      "label": "Portfolio today",
+      "value": "−$1,203",
+      "valueColor": "#ff6b6b",
+      "sub": "−3.0% · value $39,408",
+      "subColor": "#ff9a9a"
+    },
+    {
+      "label": "Alerts",
+      "value": "4",
+      "sub": "1 ⚠️ · 3 📝"
+    },
+    {
+      "label": "Active",
+      "value": "1",
+      "sub": "still active"
+    },
+    {
+      "label": "Filings",
+      "value": "7",
+      "sub": "1 earnings 8-K"
+    }
+  ],
+  "alerts": [
+    {
+      "severity": "warning",
+      "ticker": "CNFX",
+      "pills": [
+        {
+          "label": "confirmed",
+          "tone": "neutral"
+        }
+      ],
+      "price": "$49.60",
+      "changePct": -1.3,
+      "body": "Closed at $49.60, at or below the $50.00 warning level (stop $46.30).",
+      "range": {
+        "left": "stop $46.30",
+        "right": "take-profit $64.00",
+        "markerPct": 19
+      },
+      "position": {
+        "lead": "Your position: 9 sh",
+        "pl": {
+          "dollars": -23.67,
+          "pct": -5.04
+        },
+        "tail": "1% of portfolio"
+      },
+      "compact": false
+    },
+    {
+      "severity": "review",
+      "ticker": "ETFX",
+      "pills": [
+        {
+          "label": "placeholder",
+          "tone": "neutral"
+        },
+        {
+          "label": "escalated",
+          "tone": "escalated"
+        }
+      ],
+      "price": "$99.00",
+      "changePct": -3,
+      "body": "17.5% below the 52-week high ($120.00), crossing the 15% tier. Next tier (20%) at $96.00.",
+      "range": {
+        "left": "20% $96.00",
+        "right": "high $120.00",
+        "markerPct": 13
+      },
+      "position": {
+        "lead": "Your position: 140 sh across 3 lots",
+        "pl": {
+          "dollars": -742,
+          "pct": -5.08
+        },
+        "tail": "36% of portfolio"
+      },
+      "compact": false
+    },
+    {
+      "severity": "review",
+      "ticker": "MOVX",
+      "pills": [],
+      "price": "$55.00",
+      "changePct": -7.4,
+      "body": "one-day move past ±7%",
+      "range": null,
+      "position": {
+        "lead": "position",
+        "pl": {
+          "dollars": -150,
+          "pct": -12
+        },
+        "tail": null
+      },
+      "compact": true
+    },
+    {
+      "severity": "review",
+      "ticker": "SPCQ",
+      "pills": [],
+      "price": "$4.20",
+      "changePct": -5.4,
+      "body": "new 52-week closing low (was $4.50)",
+      "range": null,
+      "position": {
+        "lead": "position",
+        "pl": {
+          "dollars": -190,
+          "pct": -47.5
+        },
+        "tail": null
+      },
+      "compact": true
+    }
+  ],
+  "active": [
+    {
+      "severity": "review",
+      "ticker": "IDXQ",
+      "pills": [
+        {
+          "label": "placeholder",
+          "tone": "neutral"
+        },
+        {
+          "label": "active since Nov 13",
+          "tone": "neutral"
+        }
+      ],
+      "price": "$434.00",
+      "changePct": -2.7,
+      "body": "13.2% below the 52-week high ($500.00), past the 10% tier. Next tier (15%) at $425.00.",
+      "range": {
+        "left": "20% $400.00",
+        "right": "high $500.00",
+        "markerPct": 34
+      },
+      "position": {
+        "lead": "Your position: 12 sh",
+        "pl": {
+          "dollars": -432,
+          "pct": -7.66
+        },
+        "tail": "14% of portfolio"
+      },
+      "compact": false
+    }
+  ],
+  "levelsToWatch": [
+    "IDXQ $434.00, 2.1% above its $425.00 15% tier",
+    "ETFX $99.00, 3.0% above its $96.00 20% tier"
+  ],
+  "positions": [
+    {
+      "ticker": "GAINX",
+      "accountTag": "R",
+      "price": "$42.00",
+      "dayPct": 0.3,
+      "value": "$840",
+      "plDollars": 140,
+      "plPct": 20,
+      "next": {
+        "text": "warning $39.40 · 6.2%",
+        "pill": "draft",
+        "near": true
+      }
+    },
+    {
+      "ticker": "LOTX",
+      "accountTag": "R+I",
+      "lotLine": "12 @ 70.10 · 9 @ 84.40",
+      "price": "$80.72",
+      "dayPct": 0.3,
+      "value": "$1,695",
+      "plDollars": 94.32,
+      "plPct": 5.89,
+      "next": {
+        "text": "52w low $70.10 · 13.2%",
+        "pill": "placeholder",
+        "near": false
+      }
+    },
+    {
+      "ticker": "CNFX",
+      "accountTag": "R",
+      "price": "$49.60",
+      "dayPct": -1.3,
+      "value": "$446",
+      "plDollars": -23.67,
+      "plPct": -5.04,
+      "next": {
+        "text": "stop $46.30 · 6.7%",
+        "near": true
+      }
+    },
+    {
+      "ticker": "IDXQ",
+      "accountTag": "R",
+      "price": "$434.00",
+      "dayPct": -2.7,
+      "value": "$5,208",
+      "plDollars": -432,
+      "plPct": -7.66,
+      "next": {
+        "text": "15% tier $425.00 · 2.1%",
+        "pill": "placeholder",
+        "near": true
+      }
+    },
+    {
+      "ticker": "ETFX",
+      "accountTag": "R+I",
+      "lotLine": "3 lots · 140 sh",
+      "price": "$99.00",
+      "dayPct": -3,
+      "value": "$13,860",
+      "plDollars": -742,
+      "plPct": -5.08,
+      "next": {
+        "text": "20% tier $96.00 · 3.0%",
+        "pill": "placeholder",
+        "near": true
+      }
+    },
+    {
+      "ticker": "SPCQ",
+      "accountTag": "R",
+      "price": "$4.20",
+      "dayPct": -5.4,
+      "value": "$210",
+      "plDollars": -190,
+      "plPct": -47.5,
+      "next": {
+        "text": "at 52w low",
+        "near": true
+      }
+    },
+    {
+      "ticker": "MOVX",
+      "accountTag": "I",
+      "price": "$55.00",
+      "dayPct": -7.4,
+      "value": "$1,100",
+      "plDollars": -150,
+      "plPct": -12,
+      "next": null
+    }
+  ],
+  "optionsBox": [
+    "OPTX Jan-21-2028 $40 call · OPTX $48.00 +0.4%, 20.0% above strike",
+    "OTCQ · no data source · 💡 Dec 15: Tax checkpoint: decide sell-for-loss; no rebuy…"
+  ],
+  "filings": [
+    {
+      "tickers": [
+        "ACMX"
+      ],
+      "title": "8-K · results",
+      "href": "https://www.sec.gov/Archives/edgar/data/1/000000000126000001/0000000001-26-000001-index.htm",
+      "strong": true,
+      "detail": "(Item 2.02) · Mon 1:06 PM",
+      "lines": []
+    },
+    {
+      "tickers": [
+        "ACMX"
+      ],
+      "title": "10-Q · quarterly report",
+      "href": "https://www.sec.gov/Archives/edgar/data/1/000000000126000002/0000000001-26-000002-index.htm",
+      "strong": false,
+      "detail": "Mon 1:08 PM",
+      "lines": []
+    },
+    {
+      "tickers": [
+        "CNFX"
+      ],
+      "title": "Form 4 · open-market sale",
+      "href": "https://www.sec.gov/Archives/edgar/data/2/000000000226000003/0000000002-26-000003-index.htm",
+      "strong": true,
+      "detail": "Fri 4:30 PM",
+      "lines": [
+        "Jane Q Doe (CFO) sold 5,000 sh @ $51.10 avg ($255,500) · 10b5-1 plan"
+      ]
+    },
+    {
+      "tickers": [
+        "GAINX",
+        "MOVX",
+        "OPTX ×3"
+      ],
+      "title": "Form 4 · insider filings · no open-market buys/sells",
+      "strong": false,
+      "lines": []
+    }
+  ],
+  "headlines": {
+    "items": [
+      {
+        "title": "Regulators propose new export rules for widget makers",
+        "href": "https://www.example.com/news/1",
+        "source": "example.com",
+        "day": "Mon",
+        "tickers": [
+          "ETFX",
+          "IDXQ"
+        ],
+        "otherTickers": [
+          "WTCH"
+        ]
+      },
+      {
+        "title": "Court issues order against event-contract operators",
+        "href": "https://news.example.org/2",
+        "source": "news.example.org",
+        "day": "Mon",
+        "tickers": [
+          "MOVX"
+        ],
+        "otherTickers": [],
+        "extra": "+3 more MOVX stories"
+      }
+    ],
+    "notes": [
+      "+ 12 more holding headlines",
+      "5 filtered as noise (e.g. \"Top Stocks to Watch After Weekend Chaos\")"
+    ],
+    "watchlist": "WTCH 16 · WTCQ 2 · top: Chipmakers fail to dismiss price-fixing suit"
+  },
+  "weekly": {
+    "rulesToWrite": [
+      "MOVX (risk stop, take profit)"
+    ],
+    "needsInput": [
+      "GAINX: why i own it"
+    ]
+  },
+  "footer": [
+    "🩺 Feeds OK · prices: Alpaca SIP daily bars · filings: SEC EDGAR · news: Benzinga",
+    "Not checked: OTCQ day move, OPTX280121C00040000 option value (no data source) · CNFX trailing stop (not started yet)",
+    "Close of Mon, Nov 16 · news & filings since Fri 2:15 PM PT · generated Mon 2:15 PM PT"
+  ]
+}
