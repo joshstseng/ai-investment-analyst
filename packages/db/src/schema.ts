@@ -631,6 +631,125 @@ export const alertStates = pgTable('alert_states', {
   ...timestamps,
 });
 
+/**
+ * Pullback screen fundamentals, refreshed weekly from SEC company facts: the extracted series per
+ * metric (compact XBRL facts) and the latest earnings release (8-K item 2.02).
+ */
+export const fundamentals = pgTable('fundamentals', {
+  symbol: text('symbol').primaryKey(),
+  cik: text('cik'),
+  entityName: text('entity_name'),
+  /** 'us-gaap' | 'ifrs-full' */
+  taxonomy: text('taxonomy'),
+  /** Reporting currency of the monetary series, e.g. 'USD', 'TWD'. */
+  currency: text('currency'),
+  series: jsonb('series').$type<Record<string, unknown[]>>().notNull().default({}),
+  lastEarningsRelease: date('last_earnings_release', { mode: 'string' }),
+  fetchedAt: tstz('fetched_at'),
+  /** Why the last refresh failed for this symbol (no CIK, no facts, HTTP error). */
+  error: text('error'),
+  ...timestamps,
+});
+
+/** Quality scorecard per symbol, computed from `fundamentals` and stored closes. */
+export const scorecards = pgTable('scorecards', {
+  symbol: text('symbol').primaryKey(),
+  computedAt: tstz('computed_at').notNull(),
+  scorecard: jsonb('scorecard').$type<Record<string, unknown>>().notNull(),
+  /** Latest close × diluted shares (USD filers only). */
+  marketCapUsd: numeric('market_cap_usd', { precision: 20, scale: 0 }),
+  qualityPass: boolean('quality_pass').notNull(),
+  qualityReasons: text('quality_reasons')
+    .array()
+    .notNull()
+    .default(sql`'{}'::text[]`),
+  ...timestamps,
+});
+
+/** Pullback screen alert state per ticker (see decidePullback in @aia/core). */
+export const pullbackState = pgTable('pullback_state', {
+  symbol: text('symbol').primaryKey(),
+  currentTier: integer('current_tier'),
+  lastAlertedTier: integer('last_alerted_tier'),
+  lastAlertedAt: tstz('last_alerted_at'),
+  /** 'open' | 'midday' | 'eod' */
+  lastAlertedCheck: text('last_alerted_check'),
+  qualifiedSince: date('qualified_since', { mode: 'string' }),
+  alertedOneDayDropDate: date('alerted_one_day_drop_date', { mode: 'string' }),
+  ...timestamps,
+});
+
+/**
+ * Every screened ticker at every pullback check: price (with source and time), metrics,
+ * qualification, tier and what was decided. The shared output external agents read.
+ */
+export const pullbackObservations = pgTable(
+  'pullback_observations',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    /** New York trading date of the check. */
+    date: date('date', { mode: 'string' }).notNull(),
+    /** 'open' | 'midday' | 'eod' */
+    check: text('check').notNull(),
+    checkedAt: tstz('checked_at').notNull(),
+    symbol: text('symbol').notNull(),
+    price: numeric('price', { precision: 18, scale: 4 }).notNull(),
+    priceAt: tstz('price_at').notNull(),
+    /** 'alpaca:iex' | 'twelvedata' | 'alpaca:sip' (official close) */
+    priceSource: text('price_source').notNull(),
+    intraday: boolean('intraday').notNull(),
+    prevClose: numeric('prev_close', { precision: 18, scale: 4 }).notNull(),
+    high52: numeric('high_52', { precision: 18, scale: 4 }).notNull(),
+    high52Date: date('high_52_date', { mode: 'string' }).notNull(),
+    low52: numeric('low_52', { precision: 18, scale: 4 }).notNull(),
+    belowHighPct: numeric('below_high_pct', { precision: 8, scale: 2 }).notNull(),
+    d1Pct: numeric('d1_pct', { precision: 8, scale: 2 }).notNull(),
+    d5Pct: numeric('d5_pct', { precision: 8, scale: 2 }),
+    worstDropPct: numeric('worst_drop_pct', { precision: 8, scale: 2 }).notNull(),
+    worstDropDays: integer('worst_drop_days').notNull(),
+    atr14: numeric('atr14', { precision: 18, scale: 4 }),
+    /** 52-week window start when shortened by a spin-off. */
+    windowStart: date('window_start', { mode: 'string' }),
+    qualifies: boolean('qualifies').notNull(),
+    reasons: text('reasons')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    tier: integer('tier'),
+    gapDown: boolean('gap_down').notNull().default(false),
+    /** Null when the ticker has no scorecard. */
+    qualityPass: boolean('quality_pass'),
+    /** Alert kinds decided this check (first / deeper_tier / one_day_drop; 'baseline' = silent). */
+    alertKinds: text('alert_kinds')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    reversedTier: integer('reversed_tier'),
+    reset: boolean('reset').notNull().default(false),
+    /** Quality scorecard snapshot for qualifying tickers. */
+    scorecard: jsonb('scorecard').$type<Record<string, unknown>>(),
+    ...timestamps,
+  },
+  (t) => [
+    unique('pullback_observations_check').on(t.date, t.check, t.symbol),
+    index('pullback_observations_symbol_idx').on(t.symbol, t.date),
+  ],
+);
+
+/** Requests/credits used per external API per New York trading day (rate budgets, e.g. Twelve Data). */
+export const apiUsage = pgTable(
+  'api_usage',
+  {
+    provider: text('provider').notNull(),
+    /** America/New_York date the usage counts against. */
+    day: date('day', { mode: 'string' }).notNull(),
+    requests: integer('requests').notNull().default(0),
+    credits: integer('credits').notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [primaryKey({ columns: [t.provider, t.day] })],
+);
+
 export const jobRuns = pgTable(
   'job_runs',
   {

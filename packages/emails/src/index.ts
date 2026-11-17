@@ -41,3 +41,13 @@ export {
   type MorningEmailProps,
   type UpcomingItem,
 } from './emails/MorningEmail';
+export {
+  PullbackEmail,
+  PullbackTable,
+  pullbackTableText,
+  renderPullbackEmail,
+  renderPullbackText,
+  type PullbackBlock,
+  type PullbackEmailProps,
+  type PullbackRow,
+} from './emails/PullbackEmail';

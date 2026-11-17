@@ -22,6 +22,7 @@ RUN pnpm install --frozen-lockfile --prod
 # Source and migrations. .dockerignore keeps out .env, data/ (holdings), node_modules and git.
 COPY packages ./packages
 COPY apps ./apps
+COPY config ./config
 
 WORKDIR /app/apps/worker
 # Same as `pnpm worker`, but node is PID 1 so Railway's SIGTERM reaches the worker's

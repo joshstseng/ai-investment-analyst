@@ -46,6 +46,12 @@ STILL-ACTIVE CONDITIONS
 -----------------------
 - REVIEW IDXQ [placeholder, active since Nov 13]: $434.00 −2.7% — 13.2% below the 52-week high ($500.00), past the 10% tier. Next tier (15%) at $425.00. | Your position: 12 sh −$432 (−7.7%) · 14% of portfolio
 
+PULLBACK SCREEN (12 IN THE SCREEN · 2 CHANGED TODAY)
+----------------------------------------------------
+- SFTX: tier −25%, −27.3% from high, day −7.4% — Midday: deeper tier −25%, one-day drop -7.4%
+- CHPX: tier −20%, −22.0% from high, day −1.2% — Midday: deeper tier −25% · Close: back above −25% by the close
+- SPCQ (quality ✗): tier −35%, −61.0% from high, day −5.4% — in the screen since Nov 16
+
 WEEKLY: RULES TO WRITE AND MISSING INPUT
 ----------------------------------------
 Rules to write: MOVX (risk stop, take profit)

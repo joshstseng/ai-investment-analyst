@@ -26,6 +26,23 @@ const schema = z.object({
     .optional()
     .or(z.literal('').transform(() => undefined)),
   /**
+   * Bearer token for the read-only pullback export (GET /pullbacks.json|csv). The HTTP server
+   * starts only when this is set. Use a long random string (e.g. `openssl rand -hex 24`).
+   */
+  PULLBACK_EXPORT_TOKEN: z
+    .string()
+    .min(24, 'PULLBACK_EXPORT_TOKEN must be at least 24 characters')
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  /** HTTP port (Railway sets it). */
+  PORT: z.coerce.number().int().min(1).max(65535).default(8080),
+  /** Twelve Data key: fallback quotes for the pullback screen (free plan 8/min, 800/day). */
+  TWELVEDATA_API_KEY: z
+    .string()
+    .min(1)
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  /**
    * Resend API key. When set, email goes out over Resend's HTTPS API (works on Railway, which
    * blocks outbound SMTP on the Hobby plan); otherwise Gmail SMTP below is used.
    */

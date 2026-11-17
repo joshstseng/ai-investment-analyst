@@ -17,11 +17,14 @@ import {
   ciksJob,
   closeCheckJob,
   earningsJob,
+  fundamentalsJob,
+  fundamentalsStale,
   eventsRefreshJob,
   feedHealthJob,
 } from './schedule/jobs';
 import { scheduleDefinitions, startScheduler } from './schedule/scheduler';
 import { collectFilings } from './sec/filings';
+import { startExportServer } from './server';
 
 const ctx = createContext();
 const { db, alpaca, env, sec } = ctx;
@@ -84,14 +87,23 @@ if (env.NEWS_STREAM_ENABLED) {
 // by catch-up after a deploy isn't missing them. Both are budget/once-a-day guarded.
 await safely('events_refresh', () => eventsRefreshJob(ctx));
 await safely('earnings', () => earningsJob(ctx));
+// Pullback fundamentals take a few minutes: catch up in the background, don't block startup.
+if (await fundamentalsStale(ctx)) {
+  void safely('fundamentals', () => fundamentalsJob(ctx));
+}
 await safely('close_check', async () => log.info(`close check: ${await closeCheckJob(ctx)}`));
 await safely('feed_health', () => feedHealthJob(ctx));
 
 const scheduler = startScheduler(scheduleDefinitions(ctx, stream));
+// Read-only pullback export for external research agents (only with a token).
+const exportServer = env.PULLBACK_EXPORT_TOKEN
+  ? startExportServer({ db, token: env.PULLBACK_EXPORT_TOKEN, port: env.PORT })
+  : null;
 
 async function shutdown(signal: string) {
   log.info(`worker stopping (${signal})`);
   scheduler.stop();
+  exportServer?.close();
   stream?.stop();
   await ctx.close();
   process.exit(0);

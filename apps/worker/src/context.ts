@@ -3,6 +3,7 @@ import { AlpacaClient } from './alpaca/client';
 import { loadEnv } from './env';
 import { log } from './lib/log';
 import { createMailer } from './notify/mailer';
+import { TwelveDataClient } from './pullbacks/twelvedata';
 import { SecClient } from './sec/client';
 
 export function createContext() {
@@ -10,6 +11,7 @@ export function createContext() {
   const { db, sql } = createDb(env.DATABASE_URL);
   const alpaca = new AlpacaClient(env);
   const sec = env.SEC_USER_AGENT ? new SecClient(env.SEC_USER_AGENT) : null;
+  const twelveData = env.TWELVEDATA_API_KEY ? new TwelveDataClient(env.TWELVEDATA_API_KEY) : null;
   const mailer = createMailer(env, {
     onRetry: (info) => log.warn('email send retry', info),
   });
@@ -18,6 +20,7 @@ export function createContext() {
     db,
     alpaca,
     sec,
+    twelveData,
     mailer,
     requireSec(): SecClient {
       if (!sec) throw new Error('SEC_USER_AGENT is not set; EDGAR collection is disabled');

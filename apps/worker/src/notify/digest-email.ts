@@ -406,6 +406,13 @@ export function digestEmailProps(d: DigestData, opts: { barsFeed: string }): Dig
     optionsBox: box.map(optionsBoxEntry),
     filings: filingItems(d),
     headlines: headlinesProps(d.headlineSelection),
+    pullbacks: d.pullbacks
+      ? {
+          note: `${d.pullbacks.total} in the screen · ${d.pullbacks.changed} changed today`,
+          rows: d.pullbacks.rows,
+          more: d.pullbacks.more,
+        }
+      : null,
     weekly: d.weekly
       ? {
           rulesToWrite: d.rulesToWrite.map((r) => `${r.display} (${r.purposes.join(', ')})`),

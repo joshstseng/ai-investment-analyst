@@ -34,6 +34,40 @@ export const submissionsSchema = z.object({
 });
 export type Submissions = z.infer<typeof submissionsSchema>;
 
+/** XBRL company facts: every reported value per taxonomy → concept → unit (only fields we use). */
+export const companyFactsSchema = z.object({
+  cik: z.union([z.string(), z.number()]),
+  entityName: z.string().optional(),
+  facts: z.record(
+    z.string(),
+    z.record(
+      z.string(),
+      z.object({
+        units: z.record(
+          z.string(),
+          z.array(
+            z.object({
+              start: z.string().optional(),
+              end: z.string(),
+              val: z.number(),
+              fy: z.number().nullable().optional(),
+              fp: z.string().nullable().optional(),
+              form: z.string(),
+              filed: z.string(),
+            }),
+          ),
+        ),
+      }),
+    ),
+  ),
+});
+export type CompanyFactsJson = z.infer<typeof companyFactsSchema>;
+
+/** XBRL frames: one concept for every filer in one period (e.g. shares outstanding). */
+export const framesSchema = z.object({
+  data: z.array(z.object({ cik: z.number(), val: z.number(), end: z.string() }).passthrough()),
+});
+
 /**
  * SEC allows 10 requests/second. 8/s sustained with a burst of 1 keeps every 1-second window at
  * 9 or fewer (a larger burst would stack on top of the sustained rate).
@@ -77,6 +111,25 @@ export class SecClient {
 
   submissions(cik: string) {
     return this.get(`https://data.sec.gov/submissions/CIK${padCik(cik)}.json`, submissionsSchema);
+  }
+
+  /** All XBRL facts a company has reported (several MB for large filers). */
+  companyFacts(cik: string) {
+    return this.get(
+      `https://data.sec.gov/api/xbrl/companyfacts/CIK${padCik(cik)}.json`,
+      companyFactsSchema,
+    );
+  }
+
+  /**
+   * One XBRL concept for every filer in a period, e.g.
+   * frames('us-gaap', 'WeightedAverageNumberOfDilutedSharesOutstanding', 'shares', 'CY2026Q3').
+   */
+  frames(taxonomy: string, concept: string, unit: string, period: string) {
+    return this.get(
+      `https://data.sec.gov/api/xbrl/frames/${taxonomy}/${concept}/${unit}/${period}.json`,
+      framesSchema,
+    );
   }
 
   /** A raw document (e.g. Form 4 XML) as text, under the same fair-access limits. */

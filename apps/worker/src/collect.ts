@@ -21,6 +21,16 @@
  *       (preview the alert email for a rule that fired on that date)
  *   pnpm collect health-email [--feed F] [--recovery] [--html f] [--test-send]
  *       (preview a simulated HEALTH email; test sends say "(test)")
+ *   pnpm collect universe-refresh        (rebuild config/universe/*.csv; commit the result)
+ *   pnpm collect screen-bars [--years 5] (pullback universe: history backfill + refresh)
+ *   pnpm collect screen-prices [--live] [--symbols A,B]  (pullback price metrics)
+ *   pnpm collect fundamentals [--symbols A,B]  (SEC company facts → scorecards; weekly job)
+ *   pnpm collect scorecard [--symbols A,B]     (print scorecards and the quality filter)
+ *   pnpm collect pullback-check --check open|midday|eod [--date D]  (run one check now)
+ *   pnpm collect pullbacks                     (tickers in a pullback episode)
+ *   pnpm collect pullback-export [--format json|csv] [--out file] [--date D]  (shared output)
+ *   pnpm collect pullback-preview --symbols A,B [--check midday] [--html f] [--test-send]
+ *       (the alert email those symbols would get if they qualified now; stores nothing)
  *   pnpm collect alerts                  (last 20 alerts and their send status)
  *   pnpm collect test-email              (send one test message)
  *   pnpm collect schedule                (show the cron schedule and next runs, PT)
@@ -46,11 +56,21 @@ import { enqueueAlert } from './notify/outbox';
 import { NewsStreamManager } from './news/run-stream';
 import { runFeedHealth } from './health/run';
 import { gatherDigest } from './notify/digest';
+import { buildPullbackExport, pullbackExportCsv } from './pullbacks/export';
 import { composeDigest } from './notify/digest-email';
 import { composeHealthAlert } from './notify/health-alerts';
 import { previewRuleAlert } from './notify/rule-alerts';
 import { alerts } from '@aia/db';
-import { digestJob, drainOutbox, earningsJob, eventsRefreshJob, outboxJob } from './schedule/jobs';
+import {
+  digestJob,
+  drainOutbox,
+  earningsJob,
+  eventsRefreshJob,
+  fundamentalsJob,
+  outboxJob,
+  pullbackPreview,
+  runPullbackCheckJob,
+} from './schedule/jobs';
 import { latestCompletedSession } from './rules/check';
 import { closeCheckJob } from './schedule/jobs';
 import { scheduleDefinitions, TIMEZONE } from './schedule/scheduler';
@@ -58,6 +78,13 @@ import { Cron } from 'croner';
 import { syncCiks } from './sec/ciks';
 import { collectFilings } from './sec/filings';
 import { checkRules, type CheckResult } from './rules/check';
+import {
+  pullbacksCommand,
+  scorecardCommand,
+  screenBarsCommand,
+  screenPricesCommand,
+  universeRefreshCommand,
+} from './pullbacks/inspect';
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
@@ -74,6 +101,12 @@ const { positionals, values } = parseArgs({
     html: { type: 'string' },
     'test-send': { type: 'boolean', default: false },
     ticker: { type: 'string' },
+    years: { type: 'string' },
+    live: { type: 'boolean', default: false },
+    symbols: { type: 'string' },
+    check: { type: 'string' },
+    format: { type: 'string', default: 'json' },
+    out: { type: 'string' },
     feed: { type: 'string', default: 'alpaca_news_stream' },
     recovery: { type: 'boolean', default: false },
   },
@@ -315,6 +348,72 @@ try {
       await previewOrSend('health', { ...msg, subject: `${msg.subject} (test)` });
       break;
     }
+    case 'universe-refresh':
+      await universeRefreshCommand(ctx);
+      break;
+    case 'screen-bars':
+      await screenBarsCommand(ctx, values.years ? Number(values.years) : undefined);
+      break;
+    case 'fundamentals':
+      console.log(
+        await fundamentalsJob(ctx, {
+          symbols: values.symbols?.split(',').map((x) => x.trim().toUpperCase()),
+        }),
+      );
+      break;
+    case 'scorecard':
+      await scorecardCommand(
+        ctx,
+        values.symbols?.split(',').map((x) => x.trim().toUpperCase()),
+      );
+      break;
+    case 'pullback-check': {
+      const check = values.check as 'open' | 'midday' | 'eod' | undefined;
+      if (!check || !['open', 'midday', 'eod'].includes(check)) {
+        throw new Error('--check open|midday|eod is required');
+      }
+      const date = values.date ?? nyDate(new Date());
+      const res = await runPullbackCheckJob(ctx, check, date);
+      console.log(JSON.stringify(res.meta, null, 2));
+      break;
+    }
+    case 'pullback-preview': {
+      // Real data, nothing stored: the alert email these symbols would get as new qualifiers.
+      const symbols = values.symbols?.split(',').map((x) => x.trim().toUpperCase()) ?? [];
+      if (!symbols.length) throw new Error('--symbols A,B is required');
+      const check = (values.check ?? 'midday') as 'open' | 'midday' | 'eod';
+      const date = values.date ?? nyDate(new Date());
+      const msgs = await pullbackPreview(ctx, check, date, symbols);
+      if (!msgs.length) console.log('none of those symbols qualifies right now');
+      for (const m of msgs) {
+        await previewOrSend(
+          'pullback',
+          values['test-send'] ? { ...m, subject: `${m.subject} (test)` } : m,
+        );
+      }
+      break;
+    }
+    case 'pullback-export': {
+      const data = await buildPullbackExport(db, { date: values.date });
+      const body =
+        values.format === 'csv' ? pullbackExportCsv(data) : JSON.stringify(data, null, 2);
+      if (values.out) {
+        const out = resolve(process.env.INIT_CWD ?? process.cwd(), values.out);
+        mkdirSync(dirname(out), { recursive: true });
+        writeFileSync(out, `${body}\n`);
+        console.log(`wrote ${data.items.length} names (${data.date} ${data.check}) to ${out}`);
+      } else console.log(body);
+      break;
+    }
+    case 'pullbacks':
+      await pullbacksCommand(ctx);
+      break;
+    case 'screen-prices':
+      await screenPricesCommand(ctx, {
+        live: values.live,
+        symbols: values.symbols?.split(',').map((x) => x.trim().toUpperCase()),
+      });
+      break;
     case 'alerts': {
       const rows = await db.select().from(alerts).orderBy(desc(alerts.id)).limit(20);
       for (const a of rows) {

@@ -449,5 +449,36 @@ export function sampleDigest(weekly = false): DigestData {
       },
     },
     alertMix: { WARNING: 1, REVIEW: 3 },
+    pullbacks: {
+      total: 12,
+      changed: 2,
+      more: 0,
+      rows: [
+        {
+          ticker: 'SFTX',
+          tier: '−25%',
+          belowHigh: '27.3%',
+          d1Pct: -7.4,
+          note: 'Midday: deeper tier −25%, one-day drop -7.4%',
+          quality: 'pass',
+        },
+        {
+          ticker: 'CHPX',
+          tier: '−20%',
+          belowHigh: '22.0%',
+          d1Pct: -1.2,
+          note: 'Midday: deeper tier −25% · Close: back above −25% by the close',
+          quality: 'pass',
+        },
+        {
+          ticker: 'SPCQ',
+          tier: '−35%',
+          belowHigh: '61.0%',
+          d1Pct: -5.4,
+          note: 'in the screen since Nov 16',
+          quality: 'fail',
+        },
+      ],
+    },
   };
 }

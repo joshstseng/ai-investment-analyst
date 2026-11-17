@@ -34,6 +34,7 @@ import { BENCHMARKS } from '../market/universe';
 import type { CalSession } from '../schedule/market';
 import { summarizeTrades, type Form4Summary, type TradeSummary } from '../sec/form4';
 import { loadLevels } from './levels';
+import { loadPullbackSummary, type PullbackSummary } from '../pullbacks/summary';
 import { fetchPremarket, type PremarketQuote } from './premarket';
 import { morningWindow, type MorningWindow } from './window';
 
@@ -106,6 +107,8 @@ export interface MorningData {
   lastWeek: { symbol: string; held: boolean; changePct: number | null }[] | null;
   pastWeekAlerts: { subject: string; createdAt: Date }[] | null;
   health: { ok: number; issues: { feed: string; status: string; detail: string | null }[] };
+  /** Pullback screen: names in an episode and what changed during the previous session. */
+  pullbacks: PullbackSummary | null;
 }
 
 /** Holding stories shown (then "+ n more"). */
@@ -366,7 +369,13 @@ export async function gatherMorning(
     .select()
     .from(events)
     .where(
-      and(eq(events.status, 'active'), gte(events.date, today), lt(events.date, earningsHorizon)),
+      and(
+        eq(events.status, 'active'),
+        gte(events.date, today),
+        lt(events.date, earningsHorizon),
+        // Only names you hold or watch (the pullback screen keeps earnings for many more).
+        inArray(events.ticker, followed.length ? followed : ['']),
+      ),
     )
     .orderBy(asc(events.date), asc(events.ticker));
   const [avStatus] = await db.select().from(feedStatus).where(eq(feedStatus.feed, EARNINGS_FEED));
@@ -460,5 +469,6 @@ export async function gatherMorning(
     lastWeek,
     pastWeekAlerts,
     health: { ok: feeds.length - issues.length, issues },
+    pullbacks: w.prev ? await loadPullbackSummary(db, w.prev.date) : null,
   };
 }

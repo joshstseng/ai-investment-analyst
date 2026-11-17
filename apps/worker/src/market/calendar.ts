@@ -27,14 +27,14 @@ export function calendarRow(day: AlpacaCalendarDay) {
   };
 }
 
-/** Stores trading days from ~13 months back to ~13 months ahead. */
+/** Stores trading days from ~5.2 years back (pullback screen history) to ~13 months ahead. */
 export async function syncCalendar(
   db: Db,
   client: AlpacaClient,
   now = new Date(),
 ): Promise<JobResult> {
   const today = nyDate(now);
-  const days = await client.calendar(addDays(today, -400), addDays(today, 400));
+  const days = await client.calendar(addDays(today, -1900), addDays(today, 400));
   if (days.length === 0) throw new Error('Alpaca calendar returned no trading days');
   const rows = days.map(calendarRow);
   await db

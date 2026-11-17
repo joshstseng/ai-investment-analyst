@@ -13,10 +13,12 @@ import {
   clockSchema,
   newsPageSchema,
   snapshotsSchema,
+  spinOffsPageSchema,
   type AlpacaBar,
   type AlpacaNewsItem,
   type AlpacaSnapshot,
   type CashDividend,
+  type SpinOff,
   type Split,
 } from './schemas';
 
@@ -173,6 +175,31 @@ export class AlpacaClient {
       } while (pageToken);
     }
     return items;
+  }
+
+  /** Spin-offs where the symbols were the source, in a date window, all pages. */
+  async spinOffs(p: { symbols: readonly string[]; start: string; end: string }) {
+    const out: SpinOff[] = [];
+    for (const group of chunk(p.symbols, 50)) {
+      let pageToken: string | undefined;
+      do {
+        const page = await this.get(
+          this.dataUrl('/v1/corporate-actions', {
+            symbols: group.join(','),
+            start: p.start,
+            end: p.end,
+            types: 'spin_off',
+            limit: '1000',
+            page_token: pageToken,
+          }),
+          spinOffsPageSchema,
+          this.dataLimiter,
+        );
+        out.push(...(page.corporate_actions.spin_offs ?? []));
+        pageToken = page.next_page_token ?? undefined;
+      } while (pageToken);
+    }
+    return out;
   }
 
   /** Cash dividends and forward/reverse splits for symbols in a date window, all pages. */

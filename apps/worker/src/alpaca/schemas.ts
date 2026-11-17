@@ -108,6 +108,25 @@ export const splitSchema = z.object({
   new_rate: z.number(),
   old_rate: z.number(),
 });
+/** Spin-offs: `source_symbol` distributed `new_symbol` shares on `ex_date`. */
+export const spinOffsPageSchema = z.object({
+  corporate_actions: z.object({
+    spin_offs: z
+      .array(
+        z.object({
+          source_symbol: z.string(),
+          new_symbol: z.string().optional(),
+          ex_date: z.string(),
+        }),
+      )
+      .optional(),
+  }),
+  next_page_token: z.string().nullable().optional(),
+});
+export type SpinOff = NonNullable<
+  z.infer<typeof spinOffsPageSchema>['corporate_actions']['spin_offs']
+>[number];
+
 export const corporateActionsPageSchema = z.object({
   corporate_actions: z.object({
     cash_dividends: z.array(cashDividendSchema).optional(),

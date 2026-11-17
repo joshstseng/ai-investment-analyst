@@ -1,0 +1,69 @@
+{
+  "$comment": "Pullback opportunity screen. Thresholds are percentages. Lists: config/universe/*.csv (pnpm collect universe-refresh). Watchlist and holdings (stocks) are added from the database at runtime.",
+  "universe": {
+    "sp500Top": 100,
+    "nasdaq100": true,
+    "core": [
+      "MSFT",
+      "AAPL",
+      "GOOGL",
+      "META",
+      "AMZN",
+      "NVDA",
+      "AVGO",
+      "TSM",
+      "ORCL",
+      "NFLX",
+      "ADBE",
+      "INTU",
+      "NOW",
+      "CRM",
+      "COST",
+      "V",
+      "MA",
+      "LLY",
+      "BKNG"
+    ],
+    "$extraComment": "Large S&P 500 members the market-cap ranking can't size (shares reported per class only).",
+    "extra": ["BRK.B", "C"],
+    "$excludeComment": "Second share classes of companies already listed (one alert per company).",
+    "exclude": ["GOOG"]
+  },
+  "checks": {
+    "$comment": "America/New_York. EOD reuses the close check (20 min after the close; 60 min after an early close) so official SIP closes are available.",
+    "open": "09:40",
+    "midday": "12:30"
+  },
+  "qualify": {
+    "fromHighPct": 20,
+    "multiDayDropPct": 10,
+    "multiDayWindowDays": 5,
+    "oneDayDropPct": 7
+  },
+  "tiers": [20, 25, 30, 35],
+  "gapDownPct": 5,
+  "resetAboveFromHighPct": 15,
+  "$predecessorComment": "Ticker -> earlier SEC CIKs whose history is merged in (the newer entity wins on overlapping periods).",
+  "predecessorCiks": {
+    "XOM": ["0000034088"]
+  },
+  "quality": {
+    "profitableYears": 3,
+    "requirePositiveTtmNetIncome": true,
+    "requirePositiveTtmFcf": true,
+    "minRevenueGrowthPct": 0,
+    "minMarketCapUsd": 10000000000
+  },
+  "alerts": {
+    "maxSeparateEmails": 5,
+    "earningsWindowTradingDays": 3
+  },
+  "prices": {
+    "historyYears": 5,
+    "twelveData": {
+      "perMinute": 8,
+      "dailyBudget": 800,
+      "maxPerRun": 24
+    }
+  }
+}

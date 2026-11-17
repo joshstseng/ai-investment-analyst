@@ -16,7 +16,8 @@ Personal AI investment research assistant for one user. Research and alerts only
 - **Data:**
   - Alpaca free plan: IEX real-time quotes, a 30-symbol websocket, Benzinga news over REST and websocket; daily and pre-market bars from the SIP feed (free, 15 min delayed); dividends/splits from the corporate-actions API. The same account is the paper-trading sandbox later.
   - SEC EDGAR (free; fair access means at most 10 requests/sec and a declared User-Agent): 8-K, 10-Q, 10-K, S-1, S-3, 424B and Form 4 (insider buys/sells parsed from the XML).
-  - Alpha Vantage `EARNINGS_CALENDAR` (free key, 25 requests/day; we make ≤ 2/day): the authority for earnings dates.
+  - Alpha Vantage `EARNINGS_CALENDAR` (free key, 25 requests/day; we make ≤ 2/day): the authority for earnings dates (holdings, watchlist and the pullback universe).
+  - Twelve Data (free key, 8/min, 800/day): fallback quotes for the pullback screen only.
   - ForexFactory weekly JSON (unofficial, optional): USD High/Medium economic events. No HEALTH alert if it fails.
   - FRED, later.
 - **Alerts:** email and, later, in-app/web push. **No SMS.** On Railway, email goes through **Resend's HTTPS API** (`RESEND_API_KEY`) because the Hobby plan blocks outbound SMTP; Gmail SMTP (app password, nodemailer) is the local fallback.
@@ -42,6 +43,17 @@ Personal AI investment research assistant for one user. Research and alerts only
 - **Tests:** snapshot tests per email type plus unit tests for the view models, with made-up tickers and numbers only (`notify/digest-fixture.ts`). Update snapshots with `pnpm vitest run -u` after an intended change.
 - **Headlines (no AI yet):** dedupe by URL or near-identical title within 24 h; noise filter = `NOISE_PATTERNS` in `@aia/core` plus stories tagged with 5+ tickers; holdings ranked by holdings mentioned, then recency (digest 6, morning 6/10 on recap days); watchlist as one summary line.
 - **Alerts' Plan box:** CONFIRMED rules show `plan_action` (seed-overrides `plan_action`, column `exit_rules.plan_action`), else a generic line from the rule; DRAFT/PLACEHOLDER say "review the position" and note when no exit rule is confirmed.
+
+## Pullback opportunity screen (`apps/worker/src/pullbacks/`, `@aia/core` pullback*.ts)
+
+- **Goal:** email as soon as a proven-profitable company pulls back hard. Email only (no push). Research only.
+- **Universe:** top `sp500Top` S&P 500 by market cap + Nasdaq-100 (`config/universe/*.csv`, from `pnpm collect universe-refresh`; public data, committed) + core/extra lists in `config/pullbacks.json` + stock holdings and watchlist (from the DB at runtime). `exclude` removes duplicate share classes (GOOG).
+- **Fundamentals (weekly, Sat 6:00 AM PT; on startup if stale):** SEC `companyfacts` → `fundamentals` (compact series) → `scorecards` (quality pass/fail + reasons). TTM = last annual + YTD − prior YTD. `predecessorCiks` merges history after a re-registration (XOM). Non-USD filers (IFRS) get ratios but no valuation multiples.
+- **Checks:** Open 09:40 ET (until 11:00), Midday 12:30 ET, EOD right after the close check (official SIP closes; resets happen only here). Due-based, once per date (`job_runs` `pullback_open|midday|eod`). Live prices: Alpaca IEX latest trade (today only), Twelve Data fallback within its budget (`api_usage`).
+- **Engine (pure, tested):** qualify (20% off high / −10% over 1–5 days / −7% day), tiers, `decidePullback` (first, deeper tier, one one-day-drop alert per day, no repeated tiers, reset on an EOD close < 15% below the high), gap-down label at the open, spin-off windows, exit levels (risk stop = max(52w low, price − 2×ATR14); valuation trim = median P/E × TTM EPS; re-underwrite = next earnings).
+- **State and output:** `pullback_state` (per ticker), `pullback_observations` (every ticker at every check; the shared output). First EOD with empty state = silent baseline + one starting-list email. Export: `pnpm collect pullback-export` or `GET /pullbacks.json|csv` (worker HTTP server, `PULLBACK_EXPORT_TOKEN`).
+- **Emails:** one per ticker, or one combined above `maxSeparateEmails` (5); digest and morning email have a "Pullback screen" section (`pullbacks/summary.ts`). Bull evidence is numbers-only. A rule alert on the same ticker that day suppresses the pullback one-day-drop alert.
+- **V2:** `pullbacks/researcher.ts` is the interface for the Claude story check; it must never decide qualification or state.
 
 ## Build order
 

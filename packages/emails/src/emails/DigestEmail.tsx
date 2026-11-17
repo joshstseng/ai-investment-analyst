@@ -11,6 +11,7 @@ import { PositionsTable, type PositionRow } from '../components/PositionsTable';
 import type { RangeBarProps } from '../components/RangeBar';
 import { signedMoney, signedPct, toneColor } from '../format';
 import { EmailTooLargeError, renderHtml } from '../render';
+import { PullbackTable, pullbackTableText, type PullbackRow } from './PullbackEmail';
 import { color, type Severity } from '../tokens';
 
 /** P/L shown in a card footer: "−$992 (−4.8%)", colored. */
@@ -48,6 +49,8 @@ export interface DigestEmailProps {
   optionsBox: string[];
   filings: FilingItem[];
   headlines: { items: HeadlineItem[]; notes: string[]; watchlist: string | null };
+  /** Pullback screen (EOD summary); null when nothing is in the screen. */
+  pullbacks: { note: string; rows: PullbackRow[]; more: number } | null;
   /** Last session of the week only. */
   weekly: { rulesToWrite: string[]; needsInput: string[] } | null;
   footer: string[];
@@ -158,6 +161,13 @@ export function DigestEmail(p: DigestEmailProps) {
         </Section>
       ) : null}
 
+      {p.pullbacks && p.pullbacks.rows.length ? (
+        <Section emoji="📉" title="Pullback screen" note={p.pullbacks.note}>
+          <PullbackTable rows={p.pullbacks.rows} />
+          {p.pullbacks.more ? <Note>+ {p.pullbacks.more} more in the screen</Note> : null}
+        </Section>
+      ) : null}
+
       {p.weekly && (p.weekly.rulesToWrite.length || p.weekly.needsInput.length) ? (
         <Section emoji="🗒️" title="Weekly: rules to write and missing input">
           {p.weekly.rulesToWrite.length ? (
@@ -245,6 +255,14 @@ export function renderDigestText(p: DigestEmailProps): string {
   if (p.active.length) {
     t.push(heading('Still-active conditions'));
     for (const a of p.active) t.push(card(a));
+  }
+
+  if (p.pullbacks && p.pullbacks.rows.length) {
+    t.push(
+      heading(`Pullback screen (${p.pullbacks.note})`),
+      ...pullbackTableText(p.pullbacks.rows),
+    );
+    if (p.pullbacks.more) t.push(`+ ${p.pullbacks.more} more in the screen`);
   }
 
   if (p.weekly && (p.weekly.rulesToWrite.length || p.weekly.needsInput.length)) {

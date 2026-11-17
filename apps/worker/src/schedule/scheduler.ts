@@ -27,6 +27,8 @@ import {
   closeCheckJob,
   digestJob,
   earningsJob,
+  fundamentalsJob,
+  pullbackJob,
   eventsRefreshJob,
   morningJob,
   outboxJob,
@@ -57,6 +59,10 @@ export function scheduleDefinitions(
     { name: 'digest', pattern: '*/5 14-20 * * 1-5', run: () => digestJob(ctx) },
     { name: 'events_refresh', pattern: '0 5 * * 1-5', run: () => eventsRefreshJob(ctx) },
     { name: 'earnings', pattern: '0,30 5 * * 1-5', run: () => earningsJob(ctx) },
+    // Pullback screen checks: Open 09:40 ET, Midday 12:30 ET, EOD after the close check.
+    { name: 'pullbacks', pattern: '*/5 6-14 * * 1-5', run: () => pullbackJob(ctx) },
+    // Pullback screen fundamentals (SEC company facts), Saturdays 6:00 AM PT.
+    { name: 'fundamentals', pattern: '0 6 * * 6', run: () => fundamentalsJob(ctx) },
     { name: 'morning', pattern: '*/5 5-11 * * 1-5', run: () => morningJob(ctx) },
     { name: 'outbox_retry', pattern: '*/10 * * * *', run: () => outboxJob(ctx) },
     {

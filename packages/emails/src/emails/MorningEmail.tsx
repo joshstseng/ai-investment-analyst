@@ -9,6 +9,7 @@ import { Box, EmailShell, Note, Section, Table } from '../components/layout';
 import { Pill, type PillTone } from '../components/Pill';
 import { signedPct, toneColor } from '../format';
 import { renderHtml } from '../render';
+import { PullbackTable, pullbackTableText, type PullbackRow } from './PullbackEmail';
 import { color, SEVERITY, type Severity } from '../tokens';
 
 export interface EconRow {
@@ -61,6 +62,8 @@ export interface MorningEmailProps {
   active: { ticker: string; status: string; since: string; message: string }[];
   upcoming: { title: string; note: string | null; items: UpcomingItem[] } | null;
   lastWeek: { rows: { symbol: string; changePct: number | null }[]; alerts: string[] } | null;
+  /** Pullback screen: what changed during the previous session. */
+  pullbacks: { note: string; rows: PullbackRow[]; more: number } | null;
   footer: string[];
 }
 
@@ -228,6 +231,13 @@ export function MorningEmail(p: MorningEmailProps) {
         </Section>
       ) : null}
 
+      {p.pullbacks && p.pullbacks.rows.length ? (
+        <Section emoji="📉" title="Pullback screen" note={p.pullbacks.note}>
+          <PullbackTable rows={p.pullbacks.rows} />
+          {p.pullbacks.more ? <Note>+ {p.pullbacks.more} more in the screen</Note> : null}
+        </Section>
+      ) : null}
+
       {p.upcoming ? (
         <Section emoji="📅" title={p.upcoming.title}>
           {p.upcoming.note ? (
@@ -340,6 +350,13 @@ export function renderMorningText(p: MorningEmailProps): string {
   if (p.active.length) {
     t.push(heading('Still-active conditions'));
     for (const a of p.active) t.push(`- ${a.ticker} [${a.status}] ${a.since}: ${a.message}`);
+  }
+  if (p.pullbacks && p.pullbacks.rows.length) {
+    t.push(
+      heading(`Pullback screen (${p.pullbacks.note})`),
+      ...pullbackTableText(p.pullbacks.rows),
+    );
+    if (p.pullbacks.more) t.push(`+ ${p.pullbacks.more} more in the screen`);
   }
   if (p.upcoming) {
     t.push(heading(p.upcoming.title));

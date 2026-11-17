@@ -111,6 +111,7 @@ function data(over: Partial<MorningData> = {}, now = at545('2026-11-24')): Morni
     lastWeek: null,
     pastWeekAlerts: null,
     health: { ok: 6, issues: [] },
+    pullbacks: null,
     ...over,
   };
 }

@@ -344,6 +344,14 @@ export function morningEmailProps(d: MorningData): MorningEmailProps {
           message: a.message,
         })),
     upcoming,
+    pullbacks:
+      !w.closed && d.pullbacks
+        ? {
+            note: `${d.pullbacks.total} in the screen · ${d.pullbacks.changed} changed ${w.recap ? 'on Friday' : 'yesterday'}`,
+            rows: d.pullbacks.rows,
+            more: d.pullbacks.more,
+          }
+        : null,
     lastWeek:
       w.recap && d.lastWeek
         ? {

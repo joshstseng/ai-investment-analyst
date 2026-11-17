@@ -1,0 +1,160 @@
+{
+  "subject": "📝 [AIA] REVIEW Pullback opportunity – SFTX (−25% from high, Midday)",
+  "preview": "−25% from high · tier −25% · day −8.5% · P/E 19 vs median 27",
+  "title": "SFTX",
+  "subtitle": "Midday check · Tue, Nov 17",
+  "blocks": [
+    {
+      "ticker": "SFTX",
+      "name": "Softex Corp",
+      "headline": "25% below the 52-week high · crossed the −25% tier · down 8.5% today",
+      "pills": [
+        {
+          "label": "deeper tier −25%",
+          "tone": "review"
+        },
+        {
+          "label": "one-day drop",
+          "tone": "loss"
+        }
+      ],
+      "price": "$187.50",
+      "changePct": -8.54,
+      "priceLine": "12:31 PM ET · Alpaca IEX · Midday check · intraday, single venue, may differ from the close",
+      "facts": [
+        {
+          "label": "Previous close",
+          "value": "$205.00"
+        },
+        {
+          "label": "1-day",
+          "value": "−8.5%",
+          "tone": "loss"
+        },
+        {
+          "label": "52-week high",
+          "value": "$250.00 (Wed, Jul 15)"
+        },
+        {
+          "label": "5-day",
+          "value": "−9.1%",
+          "tone": "loss"
+        },
+        {
+          "label": "52-week low",
+          "value": "$150.00"
+        },
+        {
+          "label": "From high",
+          "value": "−25%",
+          "tone": "loss"
+        },
+        {
+          "label": "Tier",
+          "value": "−25%"
+        }
+      ],
+      "range": {
+        "left": "low $150.00",
+        "right": "high $250.00",
+        "markerPct": 37.5
+      },
+      "holding": "you hold it: Roth IRA 10 sh",
+      "exposureNote": "You already hold ETFA, ETFB: ETFs that give you large exposure to mega-cap tech. Check the overlap before adding.",
+      "earnings": [
+        "Next earnings: Thu, Jan 28 after close (confirmed, Alpha Vantage)",
+        "⚠️ The drop is 2 trading days after the earnings release filed Fri, Nov 13 (8-K item 2.02)."
+      ],
+      "headlines": [
+        {
+          "title": "Softex cuts outlook",
+          "href": "https://news.example.com/1",
+          "source": "news.example.com",
+          "day": "Tue, Nov 17",
+          "tickers": []
+        }
+      ],
+      "quality": {
+        "pass": true,
+        "reasons": []
+      },
+      "scorecard": [
+        {
+          "label": "Revenue TTM",
+          "value": "$40.0B (+18.0% y/y)"
+        },
+        {
+          "label": "3-yr CAGR",
+          "value": "15%"
+        },
+        {
+          "label": "Gross margin",
+          "value": "70%"
+        },
+        {
+          "label": "Operating margin",
+          "value": "30%"
+        },
+        {
+          "label": "Net margin",
+          "value": "25%"
+        },
+        {
+          "label": "FCF TTM",
+          "value": "$12.0B (30% margin)"
+        },
+        {
+          "label": "Net cash",
+          "value": "$15.0B"
+        },
+        {
+          "label": "Diluted shares",
+          "value": "−1.5% y/y"
+        },
+        {
+          "label": "P/E",
+          "value": "18.8 vs 5-yr median 27"
+        },
+        {
+          "label": "P/FCF",
+          "value": "15.6 vs median 24"
+        }
+      ],
+      "scorecardNotes": [],
+      "bull": [
+        "Revenue +18% y/y",
+        "3-year revenue CAGR 15%",
+        "Gross margin 70%",
+        "Operating margin 30%",
+        "FCF margin 30%",
+        "Net cash $15.0B",
+        "Diluted share count -1.5% y/y (buybacks)",
+        "P/E 19 vs 5-yr median 27",
+        "P/FCF 16 vs 5-yr median 24",
+        "Profitable in each of the last 3 fiscal years"
+      ],
+      "exits": [
+        {
+          "label": "Risk stop",
+          "value": "$175.50",
+          "basis": "price − 2×ATR14 (ATR14 $6.00; higher than the 52-week low $150.00)"
+        },
+        {
+          "label": "Valuation trim",
+          "value": "$270.00",
+          "basis": "P/E back to its own median 27.0 × TTM EPS $10.00"
+        },
+        {
+          "label": "Re-underwrite",
+          "value": "Thu, Jan 28",
+          "basis": "next earnings report"
+        }
+      ]
+    }
+  ],
+  "table": null,
+  "label": "Numbers check: passed. Story check (cause of drop, guidance, thesis) pending. Intraday moves can reverse by the close. A falling price alone is not an opportunity. Research only, not an order.",
+  "footer": [
+    "Pullback screen · Midday check · Tue, Nov 17 · prices: Alpaca (IEX intraday, SIP closes), Twelve Data fallback · fundamentals: SEC EDGAR"
+  ]
+}

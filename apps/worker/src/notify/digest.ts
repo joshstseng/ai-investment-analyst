@@ -52,6 +52,7 @@ import { and, asc, desc, eq, gt, gte, inArray, lt, lte, ne } from 'drizzle-orm';
 import { loadUniverse } from '../market/universe';
 import { loadLevelInputs, WATCH_WITHIN } from '../morning/levels';
 import { summarizeTrades, type Form4Summary, type TradeSummary } from '../sec/form4';
+import { loadPullbackSummary, type PullbackSummary } from '../pullbacks/summary';
 import { ACCOUNT_LABEL } from './format';
 
 export interface DigestLevel {
@@ -203,6 +204,8 @@ export interface DigestData {
   headlineSelection: HeadlineSelection;
   /** Today's rule alerts by tag. */
   alertMix: Partial<Record<AttentionTag, number>>;
+  /** Pullback screen EOD summary: names in an episode and what changed at each check today. */
+  pullbacks: PullbackSummary | null;
 }
 
 const HEADLINES_PER_TICKER = 5;
@@ -791,6 +794,7 @@ export async function gatherDigest(db: Db, date: string, now = new Date()): Prom
     filingList,
     filingCounts,
     headlineSelection,
+    pullbacks: await loadPullbackSummary(db, date),
     alertMix: alertsToday.reduce<Partial<Record<AttentionTag, number>>>((acc, subject) => {
       const tag = /\[AIA\] (ACTION|WARNING|REVIEW|REMINDER)\b/.exec(subject)?.[1] as
         AttentionTag | undefined;

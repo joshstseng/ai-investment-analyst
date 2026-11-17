@@ -26,6 +26,8 @@ import { requestJson } from '../lib/http';
 import type { JobResult } from '../lib/jobs';
 import { log } from '../lib/log';
 import { loadUniverse } from '../market/universe';
+import { loadPullbackConfig } from '../pullbacks/config';
+import { loadScreenUniverse } from '../pullbacks/universe';
 import { composeHealthAlert } from '../notify/health-alerts';
 import { enqueueAlert } from '../notify/outbox';
 
@@ -209,7 +211,13 @@ export async function earningsCalendarJob(
   const budget = callBudget(await recentRuns(db, now), laDate(now));
   if (!budget.allowed) return { status: 'skipped', meta: { reason: budget.reason } };
 
+  // Holdings and watchlist, plus the pullback screen universe (alerts show the next earnings).
   const tickers = new Set((await loadUniverse(db)).newsSymbols);
+  try {
+    for (const m of await loadScreenUniverse(db, loadPullbackConfig())) tickers.add(m.symbol);
+  } catch (error) {
+    log.warn('pullback universe unavailable for the earnings filter', { error: String(error) });
+  }
   const rows = parseEarningsCsv(await fetchCalendar(p.apiKey, p.fetchImpl));
   const res = await syncEarningsCalendar(db, rows, tickers, now);
   return {

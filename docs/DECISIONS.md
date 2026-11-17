@@ -62,3 +62,17 @@ Decisions made while building Step 1 that later milestones must follow. Newest l
 - **Headlines:** stories tagged with 5+ tickers count as roundups and are filtered, even when they mention a holding.
 - **Gmail clipping:** HTML over 90 KB is never sent as is; the digest switches to a trimmed layout.
 - **plan_action** (new optional rule field) is what a CONFIRMED rule's alert says to do; fill it in seed-overrides.json for every CONFIRMED price rule.
+
+## 2026-11-17: pullback opportunity screen
+
+- **Universe:** top 100 S&P 500 by market cap + Nasdaq-100 + core list + holdings/watchlist (~176 names), to fit free data budgets. GOOG excluded (same company as GOOGL).
+- **EOD check at the close check (4:20 PM ET; 2:00 PM ET after an early close)**, not 4:10: free SIP closes are 15 min delayed. Open/Midday use IEX real-time trades, labeled single-venue.
+- **Subjects keep `[AIA]`:** `📝 [AIA] REVIEW Pullback opportunity – X (−N% from high, Midday)`, `📝 [AIA] REVIEW Gap-down – X −N% at open (…)`.
+- **First EOD run is a silent baseline** plus one starting-list email; intraday checks wait for it.
+- **A rule alert on the same ticker that day suppresses the pullback one-day-drop alert** (tier alerts still go out).
+- **Gap-down (≥ 5% at the open) labels an alert; on its own it doesn't trigger one.**
+- **Spin-offs restart the 52-week window at the ex-date** (Alpaca corporate actions), so a spin doesn't look like a pullback.
+- **Quality filter:** missing data counts as a fail. Banks and utilities usually fail the FCF test (FCF isn't meaningful for them); revisit with a separate rule if needed.
+- **EOD summary is a digest section**, not a separate email. The morning email has the same section for the previous session.
+- **Shared output:** DB table + CLI export + token-protected `/pullbacks.json|csv` on the worker.
+- **Valuation trim uses the company's own 5-yr median P/E**; it can be far above the price for companies with depressed past GAAP earnings (the basis is printed).

@@ -1,0 +1,51 @@
+SFTX
+Midday check · Tue, Nov 17
+
+SFTX (Softex Corp) — $187.50 −8.5%
+25% below the 52-week high · crossed the −25% tier · down 8.5% today
+12:31 PM ET · Alpaca IEX · Midday check · intraday, single venue, may differ from the close
+  Previous close: $205.00
+  1-day: −8.5%
+  52-week high: $250.00 (Wed, Jul 15)
+  5-day: −9.1%
+  52-week low: $150.00
+  From high: −25%
+  Tier: −25%
+Position: you hold it: Roth IRA 10 sh
+You already hold ETFA, ETFB: ETFs that give you large exposure to mega-cap tech. Check the overlap before adding.
+Next earnings: Thu, Jan 28 after close (confirmed, Alpha Vantage)
+⚠️ The drop is 2 trading days after the earnings release filed Fri, Nov 13 (8-K item 2.02).
+Headlines:
+  - Softex cuts outlook (news.example.com, Tue, Nov 17)
+Quality scorecard: passed
+  Revenue TTM: $40.0B (+18.0% y/y)
+  3-yr CAGR: 15%
+  Gross margin: 70%
+  Operating margin: 30%
+  Net margin: 25%
+  FCF TTM: $12.0B (30% margin)
+  Net cash: $15.0B
+  Diluted shares: −1.5% y/y
+  P/E: 18.8 vs 5-yr median 27
+  P/FCF: 15.6 vs median 24
+Bull evidence (numbers only):
+  • Revenue +18% y/y
+  • 3-year revenue CAGR 15%
+  • Gross margin 70%
+  • Operating margin 30%
+  • FCF margin 30%
+  • Net cash $15.0B
+  • Diluted share count -1.5% y/y (buybacks)
+  • P/E 19 vs 5-yr median 27
+  • P/FCF 16 vs 5-yr median 24
+  • Profitable in each of the last 3 fiscal years
+Mechanical exit levels:
+  Risk stop: $175.50 — price − 2×ATR14 (ATR14 $6.00; higher than the 52-week low $150.00)
+  Valuation trim: $270.00 — P/E back to its own median 27.0 × TTM EPS $10.00
+  Re-underwrite: Thu, Jan 28 — next earnings report
+
+Numbers check: passed. Story check (cause of drop, guidance, thesis) pending. Intraday moves can reverse by the close. A falling price alone is not an opportunity. Research only, not an order.
+
+--
+Pullback screen · Midday check · Tue, Nov 17 · prices: Alpaca (IEX intraday, SIP closes), Twelve Data fallback · fundamentals: SEC EDGAR
+AI Investment Analyst · research and alerts only, no trading
